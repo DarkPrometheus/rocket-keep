@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rocket Keep — depuración de lógica</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #14161c; color: #e6e6e6; margin: 16px; }
+    h1 { font-size: 20px; } h2 { font-size: 16px; margin-top: 24px; }
+    input, button { font: inherit; padding: 4px 8px; }
+    table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+    td, th { border: 1px solid #2a2f3b; padding: 3px 6px; text-align: center; min-width: 34px; }
+    pre { background: #0d0f13; padding: 8px; overflow-x: auto; max-height: 420px; }
+  </style>
+</head>
+<body>
+  <h1>Rocket Keep — depuración de lógica</h1>
+  <p>Semilla de ronda: <input id="seed" type="number" value="12345">
+    Arma: <select id="weapon"><option value="burst">Ráfaga</option><option value="mortar">Mortero</option><option value="cluster">Racimo</option></select>
+    <button id="gen">Generar ronda</button>
+    <button id="rand">Semilla aleatoria</button>
+    <button id="sim">Simular partida completa</button>
+  </p>
+  <p><button id="fp">Calcular huella de determinismo</button> <code id="fpOut"></code></p>
+  <p style="color:#9aa">La huella debe ser idéntica a la de los tests de Node (<code>tests/logic.test.js</code>).
+    Si coincide en este navegador, la lógica da exactamente los mismos resultados aquí que en Node.</p>
+  <div id="out"></div>
+  <h2>Partida simulada</h2>
+  <pre id="log">(pulsa "Simular partida completa")</pre>
+
+  <script type="module">
+    import * as L from './game/logic.js';
+    import { createRng, randomSeed } from './game/rng.js';
+    import { determinismFingerprint, randomEntry } from './tests/scenario.js';
+
+    const $ = (id) => document.getElementById(id);
+
+    // Muestra las compuertas de la semilla y un mapa de daño ángulo × potencia (jugador 0).
+    /** Partida nueva con ambos jugadores usando el arma dada. */
+    const armed = (w) => L.chooseWeapon(L.chooseWeapon(L.createMatch(), 0, w).state, 1, w).state;
+
+    function showRound(seed) {
+      const st = L.startRound(armed($('weapon').value), seed).state;
+      let html = '<h2>Compuertas</h2><p>' +
+        st.field.gates.map((g) => `#${g.id} x${g.mult} [${g.seg.join(', ')}]`).join('<br>') + '</p>';
+      const powers = [];
+      for (let p = 20; p <= 100; p += 5) powers.push(p);
+      html += '<h2>Daño del jugador 0 (filas: ángulo, columnas: potencia %)</h2><table><tr><th></th>' +
+        powers.map((p) => `<th>${p}</th>`).join('') + '</tr>';
+      for (let a = 10; a <= 80; a += 5) {
+        html += `<tr><th>${a}°</th>`;
+        for (const p of powers) {
+          const d = L.resolveShot(st.field, 0, st.players[0], a, p, st.config).rawDamage;
+          const heat = Math.min(1, d / 500);
+          html += `<td style="background: rgba(240,116,43,${heat})">${d || '·'}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += `</table><p>Hash del estado: <code>${L.hashState(st)}</code></p>`;
+      $('out').innerHTML = html;
+    }
+
+    // Simula una partida entera: cada jugador prueba una rejilla y dispara al mejor tiro.
+    function simulate() {
+      const rng = createRng(randomSeed());
+      const ids = Object.keys(L.createMatch().config.weapons);
+      const w0 = ids[rng.int(0, ids.length - 1)], w1 = ids[rng.int(0, ids.length - 1)];
+      let st = L.chooseWeapon(L.chooseWeapon(L.createMatch(), 0, w0).state, 1, w1).state;
+      const lines = [`Armas: J0 ${w0}, J1 ${w1}`];
+      while (st.phase !== 'over') {
+        if (st.phase === 'loadout' || st.phase === 'shop') {
+          if (st.phase === 'shop') {
+            for (const p of [0, 1]) {
+              let offers = L.shopOffers(st, p).filter((o) => o.affordable);
+              while (offers.length) {
+                const pick = offers[rng.int(0, offers.length - 1)];
+                st = L.buy(st, p, pick.id).state;
+                lines.push(`  J${p} compra ${pick.label} (${pick.cost})`);
+                offers = L.shopOffers(st, p).filter((o) => o.affordable);
+              }
+              st = L.setReady(st, p).state;
+            }
+          }
+          const seed = rng.int(0, 0xffffffff);
+          st = L.startRound(st, seed).state;
+          lines.push(`Ronda ${st.round}${st.suddenDeath ? ' (muerte súbita)' : ''} — semilla ${seed}`);
+          continue;
+        }
+        if (st.phase === 'minigame') {
+          const entries = [randomEntry(rng, st, 0), randomEntry(rng, st, 1)];
+          st = L.playMinigame(st, entries).state;
+          const mg = st.minigame;
+          lines.push(`  Minijuego ${mg.id}: ${JSON.stringify(mg.entries)} → ${mg.first === null ? 'empate' : 'gana J' + mg.first}, abre J${st.turn}`);
+          continue;
+        }
+        const p = st.turn;
+        let best = { d: -1, a: 45, pw: 60 };
+        for (let a = 15; a <= 80; a += 5) for (let pw = 25; pw <= 100; pw += 5) {
+          const d = L.previewShot(st, p, a, pw, { maxParticles: 30 }).rawDamage;
+          if (d > best.d) best = { d, a, pw };
+        }
+        const r = L.fire(st, p, best.a, best.pw);
+        st = r.state;
+        const res = r.result;
+        lines.push(`  J${p} dispara ${res.angle}° ${res.power}%: ${res.hits} impactos de ${res.totalRockets} cohetes, -${res.damage} → rival ${res.hpAfter} HP`);
+      }
+      lines.push(`FIN: ganador ${st.winner} (${st.endReason}). Vida final: ${st.players.map((p) => p.hp).join(' vs ')}`);
+      $('log').textContent = lines.join('\n');
+    }
+
+    $('gen').onclick = () => showRound(Number($('seed').value) >>> 0);
+    $('weapon').onchange = () => showRound(Number($('seed').value) >>> 0);
+    $('rand').onclick = () => { $('seed').value = randomSeed(); showRound(Number($('seed').value)); };
+    $('sim').onclick = simulate;
+    $('fp').onclick = () => { $('fpOut').textContent = determinismFingerprint(); };
+    showRound(12345);
+  </script>
+</body>
+</html>

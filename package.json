@@ -1,0 +1,11 @@
+{
+  "name": "rocket-keep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prototipo de juego 1 vs 1 por turnos con cohetes y compuertas de multiplicador.",
+  "scripts": {
+    "test": "node --test tests/",
+    "serve": "python -m http.server 8000"
+  }
+}

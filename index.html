@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121a10">
+  <title>Rocket Keep</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sound-controls" aria-label="Sonido">
+      <button id="audioMute" type="button" aria-pressed="false" aria-label="Silenciar sonido">🔊 Sonido</button>
+      <label for="audioVolume">Volumen</label>
+      <input id="audioVolume" type="range" min="0" max="100" step="1" value="65">
+      <output id="audioLevel" for="audioVolume">65 %</output>
+    </aside>
+    <!-- HUD superior -->
+    <header id="hud" hidden>
+      <div class="side me"><span class="dot"></span><span id="meName">Tú</span><span id="meWeapon" class="weapon-tag"></span><span id="meCoins" class="chip">🪙 0</span></div>
+      <div id="round" class="chip round"></div>
+      <div class="side opp"><span id="oppWeapon" class="weapon-tag"></span><span id="oppName">Rival</span><span class="dot"></span>
+        <button id="leave" class="icon-btn" title="Menú" aria-label="Volver al menú">☰</button></div>
+    </header>
+
+    <main id="stage">
+      <canvas id="game"></canvas>
+      <div id="banner" class="banner" hidden></div>
+      <div id="toasts" aria-live="polite"></div>
+      <section id="loadout" class="panel" hidden></section>
+      <section id="minigame" class="panel minigame" hidden></section>
+      <section id="shop" class="panel" hidden></section>
+      <section id="over" class="panel over" hidden></section>
+      <section id="lobby" class="panel lobby" hidden></section>
+      <div id="netStatus" class="net-status" hidden></div>
+
+      <!-- Menú principal -->
+      <section id="menu" class="menu" hidden>
+        <div class="menu-card">
+          <h1>Rocket<span>Keep</span></h1>
+          <p class="tagline">Apunta, cruza las compuertas y multiplica tu ráfaga.</p>
+          <label class="group">
+            <span class="label">Tu nombre</span>
+            <input id="playerName" class="text-input" maxlength="16" placeholder="Jugador" autocomplete="nickname">
+          </label>
+          <div class="group">
+            <span class="label">Dificultad del bot</span>
+            <div class="segmented">
+              <button data-diff="easy">Fácil</button>
+              <button data-diff="normal" class="active">Normal</button>
+              <button data-diff="hard">Difícil</button>
+            </div>
+          </div>
+          <button id="playBot" class="primary big">Jugar contra el bot</button>
+          <div class="divider"><span>o con un amigo, en línea</span></div>
+          <button id="createRoom" class="primary big">Crear sala</button>
+          <form id="joinForm" class="join-row">
+            <input id="joinCode" class="text-input code" maxlength="4" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Código de sala">
+            <button type="submit">Unirse</button>
+          </form>
+          <details class="howto">
+            <summary>Cómo se juega</summary>
+            <ul>
+              <li>Arrastra desde tu castillo: la dirección es el ángulo y la distancia, la potencia. Suelta para disparar.</li>
+              <li>Teclado: ↑/↓ ángulo, ←/→ potencia, Espacio dispara (Shift = pasos grandes).</li>
+              <li>Al empezar eliges tu arma: Ráfaga, Mortero o Racimo.</li>
+              <li>Cada ronda empieza con un minijuego distinto (reflejos, memoria, cálculo, suerte…): quien gana abre la ronda.</li>
+              <li>Cada compuerta multiplica los cohetes que la cruzan (x2 … x30).</li>
+              <li>Entre rondas, el daño que causas te da monedas para mejoras.</li>
+              <li>No hay límite de rondas: gana quien derribe el castillo rival.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer id="controls" hidden>
+      <p id="hint"></p>
+      <button id="fire" class="primary" disabled>Disparar</button>
+    </footer>
+  </div>
+  <noscript>Este juego necesita JavaScript.</noscript>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
