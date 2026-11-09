@@ -14,6 +14,7 @@
 
 import { MinigameUI } from './minigames-ui.js';
 import { drawQR } from './qr.js';
+import { canFullscreen, onFullscreenChange, toggleFullscreen } from './fullscreen.js';
 
 const NAME_KEY = 'rocket-keep.name';
 
@@ -67,6 +68,18 @@ export class GameUI {
     /** Panel de los minijuegos de inicio de ronda (lo maneja el controller). */
     this.minigame = new MinigameUI($('minigame'), { audio });
     this.#bindStatic();
+    // Pantalla completa (solo si el navegador la permite; iPhone no).
+    const fs = $('fullscreen');
+    if (canFullscreen()) {
+      fs.hidden = false;
+      const sync = (on) => {
+        fs.textContent = on ? '⤡ Salir' : '⛶ Pantalla completa';
+        fs.setAttribute('aria-label', on ? 'Salir de pantalla completa' : 'Pantalla completa');
+      };
+      fs.addEventListener('click', () => void toggleFullscreen());
+      onFullscreenChange(sync);
+      sync(false);
+    }
     if (audio) {
       const mute = $('audioMute'), volume = $('audioVolume'), level = $('audioLevel');
       audio.subscribe(({ muted, volume: value, available }) => {

@@ -23,6 +23,7 @@ import { GameUI } from './game/ui.js';
 import { createLocalPair, BotTransport } from './net/transport.js';
 import { DEFAULT_CONFIG } from './game/config.js';
 import { createRoom, joinRoom, normalizeCode } from './net/peer.js';
+import { fullscreenForPlay } from './game/fullscreen.js';
 
 const BOT_NAMES = { easy: 'Bot fácil', normal: 'Bot normal', hard: 'Bot difícil' };
 
@@ -44,11 +45,19 @@ function stopGame() {
   ui.setNetStatus(null);
 }
 
+// En teléfonos, empezar a jugar (un toque = gesto válido) pone pantalla completa.
 const MENU_HANDLERS = {
-  onStartBot: (d) => startVsBot(d),
-  onCreateRoom: () => startHostRoom(),
+  onStartBot: (d) => {
+    fullscreenForPlay();
+    startVsBot(d);
+  },
+  onCreateRoom: () => {
+    fullscreenForPlay();
+    startHostRoom();
+  },
   onJoinRoom: (text) => {
     const code = normalizeCode(text);
+    if (code) fullscreenForPlay();
     if (code) startJoin(code);
     else ui.toast('El código son 4 letras', 'error');
   },

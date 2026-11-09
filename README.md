@@ -143,6 +143,7 @@ abre `debug.html`, pulsa «Calcular huella» y compárala con la del test.
 | `net/transport.js` | Interfaz `send(msg)` / `onMessage(cb)` / `onClose(cb)` / `close()`, más `LocalTransport` y `BotTransport`. |
 | `net/peer.js` | En línea: `PeerLink` (canal con latido y reconexión), `createRoom()` y `joinRoom()` sobre PeerJS. |
 | `game/qr.js` | Generador de códigos QR propio (para el enlace de invitación). |
+| `game/fullscreen.js` | Pantalla completa en teléfonos (automática al empezar a jugar) y bloqueo en horizontal. |
 | `net/bot.js` | Rival simulado: un cliente más que elige ángulo y potencia probando tiros con la lógica. |
 
 ### Modelo de red (host autoritativo)

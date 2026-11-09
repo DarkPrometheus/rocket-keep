@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121a10">
+  <!-- Al agregarlo a la pantalla de inicio (iPhone y Android) abre sin barras del navegador. -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Rocket Keep</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -14,6 +18,7 @@
       <label for="audioVolume">Volumen</label>
       <input id="audioVolume" type="range" min="0" max="100" step="1" value="65">
       <output id="audioLevel" for="audioVolume">65 %</output>
+      <button id="fullscreen" type="button" hidden aria-label="Pantalla completa" title="Pantalla completa">⛶ Pantalla completa</button>
     </aside>
     <!-- HUD superior -->
     <header id="hud" hidden>
