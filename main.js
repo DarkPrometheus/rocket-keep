@@ -128,7 +128,19 @@ async function startHostRoom() {
   ui.setHandlers({
     ...MENU_HANDLERS,
     onShare: () => navigator.share?.({ title: 'Rocket Keep', text: `¡Juega conmigo a Rocket Keep! Sala ${room.code}`, url }).catch(() => {}),
-    onCopyLink: () => navigator.clipboard?.writeText(url).then(() => ui.toast('Enlace copiado'), () => ui.toast('No se pudo copiar', 'error')),
+    // El portapapeles moderno solo existe en HTTPS; si no está, copia a la antigua.
+    onCopyLink: () => {
+      const legacy = () => {
+        const box = Object.assign(document.createElement('textarea'), { value: url });
+        document.body.append(box);
+        box.select();
+        const ok = document.execCommand('copy');
+        box.remove();
+        ui.toast(ok ? 'Enlace copiado' : 'No se pudo copiar: cópialo del recuadro', ok ? undefined : 'error');
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => ui.toast('Enlace copiado'), legacy);
+      else legacy();
+    },
   });
   ui.showLobby({ mode: 'host', code: room.code, url, canShare: typeof navigator.share === 'function' });
 }
@@ -147,18 +159,27 @@ function beginHostGame(room, link) {
   client.connect();
 }
 
+/**
+ * Identificador aleatorio de 128 bits en hexadecimal.
+ * No usa crypto.randomUUID: solo existe en páginas HTTPS (contexto seguro)
+ * y la página puede abrirse por http. getRandomValues funciona en ambos.
+ */
+function randomId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Identificador de este jugador para una sala (así, si recarga, vuelve a su lugar). */
 function roomToken(code) {
   const key = `rocket-keep.token.${code}`;
   try {
     let t = sessionStorage.getItem(key);
     if (!t) {
-      t = crypto.randomUUID();
+      t = randomId();
       sessionStorage.setItem(key, t);
     }
     return t;
   } catch {
-    return crypto.randomUUID();
+    return randomId();
   }
 }
 
