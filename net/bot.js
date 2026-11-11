@@ -21,9 +21,9 @@ import { needlePos } from '../game/minigames.js';
  * tiros de una rejilla y luego "tiembla" un poco (ruido en grados y %).
  */
 const DIFFICULTY = {
-  easy: { topN: 12, angleNoise: 9, powerNoise: 12, mini: { needleMs: 90, countErr: 6, simon: [2, 6], mathOk: 0.6, mathMs: [6000, 12000], taps: [13, 20], bidPct: [0, 20] } },
-  normal: { topN: 8, angleNoise: 6, powerNoise: 9, mini: { needleMs: 50, countErr: 4, simon: [4, 8], mathOk: 0.8, mathMs: [4500, 9000], taps: [17, 24], bidPct: [5, 30] } },
-  hard: { topN: 2, angleNoise: 1.5, powerNoise: 2, mini: { needleMs: 22, countErr: 2, simon: [6, 10], mathOk: 0.95, mathMs: [3000, 6000], taps: [21, 28], bidPct: [10, 35] } },
+  easy: { topN: 12, angleNoise: 9, powerNoise: 12, mini: { needleMs: 90, countErr: 6, simon: [2, 6], taps: [13, 20] } },
+  normal: { topN: 8, angleNoise: 6, powerNoise: 9, mini: { needleMs: 50, countErr: 4, simon: [4, 8], taps: [17, 24] } },
+  hard: { topN: 2, angleNoise: 1.5, powerNoise: 2, mini: { needleMs: 22, countErr: 2, simon: [6, 10], taps: [21, 28] } },
 };
 
 /** Cuánto tarda (ms, aprox.) un humano en jugar un minijuego con ese resultado. */
@@ -32,7 +32,7 @@ function minigameDuration(mg, entry) {
   switch (mg.id) {
     case 'needle': return entry.ms;
     case 'count': return p.showMs + entry.ms;
-    case 'simon': case 'math': return entry.ms;
+    case 'simon': return entry.ms;
     case 'mash': return 2100 + p.durationMs;
     default: return 1500 + Math.random() * 2500;
   }
@@ -165,21 +165,10 @@ export class BotPlayer {
         const reached = Math.min(p.seq.length, rand(d.simon[0], d.simon[1]));
         return { reached, ms: reached * 1800 + rand(0, 1500) };
       }
-      case 'math':
-        return {
-          answers: p.questions.map((q) => (Math.random() < d.mathOk ? q.answer : (q.answer + 1) % 4)),
-          ms: rand(d.mathMs[0], d.mathMs[1]),
-        };
       case 'mash':
         return { taps: Math.min(p.maxTaps, rand(d.taps[0], d.taps[1])) };
       case 'rps':
         return { picks: Array.from({ length: p.picks }, () => rand(0, 2)) };
-      case 'auction': {
-        const coins = state.players[me].coins;
-        return { bid: Math.min(coins, Math.floor((coins * rand(d.bidPct[0], d.bidPct[1])) / 100)) };
-      }
-      case 'cards':
-        return { pick: rand(0, p.cards[me].length - 1) };
       default:
         return {};
     }

@@ -95,15 +95,12 @@ export const DEFAULT_CONFIG = deepFreeze({
   // Cada ronda la semilla elige uno del `pool` (nunca el mismo dos veces
   // seguidas); quien gana abre la ronda. Reglas y textos en game/minigames.js.
   minigames: {
-    pool: ['needle', 'count', 'simon', 'math', 'mash', 'rps', 'auction', 'cards'],
+    pool: ['needle', 'count', 'simon', 'mash', 'rps'],
     needle: { periodMinMs: 900, periodMaxMs: 1400, maxMs: 8000 },   // una ida = medio periodo
     count: { min: 18, max: 40, showMs: 1600, timeMs: 12000 },       // puntos, tiempo a la vista, tiempo para responder
     simon: { length: 10, colors: 4 },
-    math: { questions: 3, timeMs: 20000 },
     mash: { durationMs: 3000, maxTaps: 80 },
     rps: { picks: 3 },
-    auction: {},
-    cards: { perPlayer: 3 },
   },
 
   // --- Partida ---

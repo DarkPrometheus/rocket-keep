@@ -295,31 +295,6 @@ const GAMES = {
     next();
   },
 
-  math(body, { params }, submit, h) {
-    const answers = params.questions.map(() => -1);
-    const t0 = performance.now();
-    let i = 0;
-    const done = () => submit({ answers, ms: Math.floor(performance.now() - t0) });
-    const show = () => {
-      const q = params.questions[i];
-      body.innerHTML = `<p class="mg-step">Pregunta ${i + 1} de ${params.questions.length}</p>
-        <p class="mg-big">${q.text} = ?</p>
-        <div class="mg-grid">${q.options.map((o, k) => `<button data-opt="${k}">${o}</button>`).join('')}</div>`;
-      h.timerBar(body, Math.max(0, params.timeMs - (performance.now() - t0)));
-    };
-    h.on(body, 'click', (e) => {
-      const b = e.target.closest('[data-opt]');
-      if (!b) return;
-      answers[i] = Number(b.dataset.opt);
-      h.sound(answers[i] === params.questions[i].answer ? 'success' : 'failure');
-      i++;
-      if (i >= params.questions.length) done();
-      else show();
-    });
-    h.timeout(() => submit({ answers, ms: params.timeMs }), params.timeMs);
-    show();
-  },
-
   mash(body, { params }, submit, h) {
     body.innerHTML = `<p class="mg-big" data-status>Prepárate…</p>
       <button class="mg-mash" data-tap disabled>3</button>`;
@@ -388,36 +363,6 @@ const GAMES = {
     render();
   },
 
-  auction(body, { coins }, submit, h) {
-    body.innerHTML = `<p class="mg-big"><span data-bid>0</span> 🪙 <small>de ${coins}</small></p>
-      <input type="range" min="0" max="${coins}" value="0" step="1">
-      <div class="mg-row">${[0, 25, 50, 100].map((p) => `<button data-pct="${p}">${p === 100 ? 'Todo' : p === 0 ? 'Nada' : p + ' %'}</button>`).join('')}</div>
-      <button class="primary big" data-send>Ofertar</button>`;
-    const range = body.querySelector('input');
-    const label = body.querySelector('[data-bid]');
-    const bid = () => Math.max(0, Math.min(coins, Math.floor(Number(range.value) || 0)));
-    h.on(range, 'input', () => (label.textContent = bid()));
-    h.on(body, 'click', (e) => {
-      const p = e.target.closest('[data-pct]');
-      if (p) {
-        range.value = Math.floor((coins * Number(p.dataset.pct)) / 100);
-        label.textContent = bid();
-      }
-      if (e.target.closest('[data-send]')) submit({ bid: bid() });
-    });
-    h.timerBar(body, 20000);
-    h.timeout(() => submit({ bid: bid() }), 20000);
-  },
-
-  cards(body, { params, me }, submit, h) {
-    body.innerHTML = `<div class="mg-cards">${params.cards[me].map((_, i) => `<button class="card back" data-card="${i}">?</button>`).join('')}</div>`;
-    h.on(body, 'click', (e) => {
-      const c = e.target.closest('[data-card]');
-      if (c) submit({ pick: Number(c.dataset.card) });
-    });
-    h.timerBar(body, 15000);
-    h.timeout(() => submit({ pick: Math.floor(Math.random() * params.cards[me].length) }), 15000);
-  },
 };
 
 // ---------- textos del resultado ----------
@@ -431,7 +376,6 @@ const RESULTS = {
   needle: (info, me, op) => both(info, me, op, (e, p) => (info.scores[p][0] > 1000 ? 'No la detuvo' : `a ${info.scores[p][0]} de la marca`)),
   count: (info, me, op) => `<p class="mg-big">Había ${info.params.n}</p>` + both(info, me, op, (e) => `${e.guess} · ${fmtS(e.ms)}`),
   simon: (info, me, op) => both(info, me, op, (e) => `nivel ${e.reached} · ${fmtS(e.ms)}`),
-  math: (info, me, op) => both(info, me, op, (e, p) => `${-info.scores[p][0]}/${info.params.questions.length} · ${fmtS(e.ms)}`),
   mash: (info, me, op) => both(info, me, op, (e) => `${e.taps} toques`),
   rps: (info, me, op) => {
     const a = info.entries[me].picks, b = info.entries[op].picks;
@@ -439,11 +383,5 @@ const RESULTS = {
     const line = (who, arr, p) => `<div class="mg-line ${info.winner === p ? 'win' : ''}"><span>${who}</span><b>${arr
       .map((x, i) => `<span class="${i === decisive ? 'decisive' : i > decisive && decisive >= 0 ? 'unused' : ''}">${RPS[x]}</span>`).join(' ')}</b></div>`;
     return line('Tú', a, me) + line('Rival', b, op);
-  },
-  auction: (info, me, op) => both(info, me, op, (e) => `${e.bid} 🪙`) + '<p class="mg-howto">Solo paga quien gana.</p>',
-  cards: (info, me, op) => {
-    const hand = (p) => info.params.cards[p].map((v, i) => `<span class="card ${i === info.entries[p].pick ? 'picked' : ''}">${v}</span>`).join('');
-    return `<div class="mg-line ${info.winner === me ? 'win' : ''}"><span>Tú</span><b class="mg-cards small">${hand(me)}</b></div>
-      <div class="mg-line ${info.winner === op ? 'win' : ''}"><span>Rival</span><b class="mg-cards small">${hand(op)}</b></div>`;
   },
 };

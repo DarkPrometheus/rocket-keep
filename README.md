@@ -111,7 +111,7 @@ hashes en una cadena. El test la compara con un valor de referencia: si cambias 
 a propósito, actualízalo. Para comprobar otro navegador (Firefox, Safari en el celular),
 abre `debug.html`, pulsa «Calcular huella» y compárala con la del test.
 - **Parámetros de desarrollo:** `?play=easy|normal|hard` empieza sin menú;
-  `?autofire=<ms>` dispara solo (para capturas); `?minigame=needle,cards` limita los
+  `?autofire=<ms>` dispara solo (para capturas); `?minigame=needle,simon` limita los
   minijuegos a esos ids.
 
 ## Arquitectura
@@ -183,8 +183,8 @@ calculan con una serie de Taylor propia. Los dos lados del campo son espejo exac
 - [x] Curación al inicio de cada ronda (30 de vida), mejorable con «Reparación» en la tienda.
 - [x] Perks pasivos de compra única: Blindaje, Ahorro y Ojo de halcón (se añaden más en
   `config.perks`).
-- [x] Minijuego en cada ronda (8, uno de cada tipo): Detén la aguja, Cuenta rápida, Simón,
-  Cálculo rápido, Machaca, Piedra-papel-tijera, Subasta secreta y Cartas. Gana = abre la ronda.
+- [x] Minijuego en cada ronda (5): Detén la aguja, Cuenta rápida, Simón, Machaca y
+  Piedra-papel-tijera. Gana = abre la ronda.
 - [x] Sin límite de rondas: solo se gana por derribo.
 - Ideas anotadas para después (más minijuegos y armas): `IDEAS.md`.
 - [x] Sonido de combate, interfaz y minijuegos, con volumen y silencio persistentes.

@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2026-11-10 — Menos minijuegos, teléfono en horizontal
+
+- Quitados Cálculo rápido, Subasta secreta y Cartas: quedan 5 minijuegos (Aguja, Cuenta
+  rápida, Simón, Machaca y Piedra-papel-tijera). Anotados en `IDEAS.md`.
+- Teléfono en horizontal: el campo usa toda la altura; HUD flotante y columna lateral con
+  sonido y Disparar. Pantalla completa automática al jugar (`game/fullscreen.js`).
+- Funciona también por http (sin `crypto.randomUUID`).
+
 ## 2026-11-08 — Juego en línea (fase 3)
 
 - `net/peer.js`: salas con PeerJS (CDN). Quien crea la sala hace de servidor en su pestaña.

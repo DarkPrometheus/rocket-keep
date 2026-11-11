@@ -265,17 +265,6 @@ button.big { width: 100%; padding: 14px; font-size: 18px; }
 .mg-slots span { width: 56px; height: 56px; display: grid; place-items: center; font-size: 28px; border-radius: 12px; background: #1c2817; border: 1px solid var(--line); color: var(--muted); }
 .mg-slots span.next { border-color: var(--gold); }
 
-/* Subasta */
-.minigame input[type=range] { width: 100%; accent-color: var(--gold); }
-
-/* Cartas */
-.mg-cards { display: flex; gap: 12px; justify-content: center; }
-.mg-cards .card { width: 76px; height: 106px; display: grid; place-items: center; border-radius: 10px; font-size: 30px; font-weight: 900; background: #f2f2f2; color: #1a1a1a; border: 2px solid #ccc; }
-.mg-cards .card.back { background: repeating-linear-gradient(45deg, #2f80ed 0 8px, #2668c4 8px 16px); color: #fff; border-color: #fff; }
-.mg-cards.small { gap: 6px; }
-.mg-cards.small .card { width: 34px; height: 46px; font-size: 16px; opacity: 0.5; }
-.mg-cards.small .card.picked { opacity: 1; border-color: var(--gold); }
-
 /* Resultado */
 .minigame.result.win h2 { color: var(--gold); }
 .mg-result { display: flex; flex-direction: column; gap: 6px; }
@@ -386,7 +375,6 @@ button.big { width: 100%; padding: 14px; font-size: 18px; }
   .mg-mash { width: 130px; height: 130px; font-size: 24px; }
   .mg-simon { width: min(190px, 100%); gap: 8px; }
   .mg-dots { aspect-ratio: 3 / 1; }
-  .mg-cards .card { width: 60px; height: 84px; font-size: 24px; }
   .mg-grid button { padding: 8px 6px; font-size: 20px; }
   .mg-needle { height: 48px; }
 

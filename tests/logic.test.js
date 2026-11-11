@@ -12,7 +12,7 @@ import { createRng } from '../game/rng.js';
  * reglas A PROPÓSITO (balance, armas, etc.), actualiza este valor con el que
  * reporte el test. Si cambia sin querer, algo rompió el determinismo.
  */
-const FINGERPRINT = '38142993-4c5095f6-2392c8bc-a692e3b6-34581dc5'; // tras los minijuegos variados
+const FINGERPRINT = '685d1305-b0393e6b-6ffca588-39a05251-394b6e78'; // tras los minijuegos variados
 
 /** Partida nueva con armas ya elegidas (por defecto, ambos con ráfaga). */
 const armed = (w0 = 'burst', w1 = 'burst') => L.chooseWeapon(L.chooseWeapon(L.createMatch(), 0, w0).state, 1, w1).state;
@@ -202,10 +202,8 @@ const GOOD_BAD = {
   },
   count: (p) => [{ guess: p.n, ms: 4000 }, { guess: p.n + 3, ms: 1000 }],
   simon: () => [{ reached: 7, ms: 20000 }, { reached: 6, ms: 9000 }],
-  math: (p) => [{ answers: p.questions.map((q) => q.answer), ms: 9000 }, { answers: p.questions.map(() => -1), ms: 1000 }],
   mash: () => [{ taps: 25 }, { taps: 24 }],
   rps: () => [{ picks: [0, 1, 2] }, { picks: [0, 0, 1] }], // empate y luego papel > piedra
-  auction: () => [{ bid: 12 }, { bid: 11 }],
 };
 
 test('minijuegos: cada uno da la apertura a quien juega mejor (en ambos lados)', () => {
@@ -222,11 +220,7 @@ test('minijuegos: cada uno da la apertura a quien juega mejor (en ambos lados)',
   }
 });
 
-test('minijuegos: cartas gana la más alta; los empates mantienen la alternancia', () => {
-  const st = withMinigame('cards');
-  const [c0, c1] = st.minigame.params.cards;
-  const r = L.playMinigame(st, [{ pick: 0 }, { pick: 0 }]);
-  assert.equal(r.state.turn, c0[0] > c1[0] ? 0 : 1);
+test('minijuegos: los empates mantienen la alternancia', () => {
   for (const round of [1, 2]) {
     const t = { ...withMinigame('mash'), round, firstShooter: (round - 1) % 2 };
     const rt = L.playMinigame(t, [{ taps: 20 }, { taps: 20 }]);
@@ -236,17 +230,6 @@ test('minijuegos: cartas gana la más alta; los empates mantienen la alternancia
     assert.equal(rps.result.winner, null);
     assert.equal(rps.state.turn, (round - 1) % 2);
   }
-});
-
-test('minijuegos: la subasta solo cobra al ganador y no sale sin monedas', () => {
-  const st = withMinigame('auction', 9, [40, 30]);
-  const r = L.playMinigame(st, [{ bid: 15 }, { bid: 20 }]);
-  assert.deepEqual(r.state.players.map((p) => p.coins), [40, 10]);
-  assert.equal(L.playMinigame(st, [{ bid: 41 }, { bid: 0 }]).error, 'Oferta inválida');
-  const tie = L.playMinigame(st, [{ bid: 5 }, { bid: 5 }]);
-  assert.deepEqual(tie.state.players.map((p) => p.coins), [40, 30]);
-  // Ronda 1: nadie tiene monedas, así que nunca toca subasta.
-  for (let seed = 0; seed < 200; seed++) assert.notEqual(L.startRound(armed(), seed).state.minigame.id, 'auction');
 });
 
 test('minijuegos: la semilla elige y nunca repite el de la ronda anterior', () => {
@@ -270,14 +253,12 @@ test('minijuegos: validaciones de entradas', () => {
     needle: [{ ms: -1 }, { ms: 1.5 }, { ms: 999999 }],
     count: [{ guess: 'x', ms: 1 }, { guess: 3 }],
     simon: [{ reached: 99, ms: 1 }],
-    math: [{ answers: [0, 0], ms: 1 }, { answers: [0, 0, 9], ms: 1 }],
     mash: [{ taps: 500 }, {}],
     rps: [{ picks: [0, 1] }, { picks: [0, 1, 3] }],
-    cards: [{ pick: 3 }, { pick: -1 }],
   };
   for (const [id, entries] of Object.entries(bad)) {
     const st = withMinigame(id);
-    const okEntry = GOOD_BAD[id]?.(st.minigame.params)[0] ?? { pick: 0 };
+    const okEntry = GOOD_BAD[id](st.minigame.params)[0];
     for (const e of entries) {
       assert.equal(L.playMinigame(st, [e, okEntry]).ok, false, `${id}: ${JSON.stringify(e)}`);
       assert.ok(L.validateMinigameEntry(st, 0, e), `${id}: ${JSON.stringify(e)}`);
@@ -291,17 +272,11 @@ test('minijuegos: validaciones de entradas', () => {
   assert.equal(L.playMinigame(done, [{ taps: 1 }, { taps: 1 }]).error, 'No es momento del minijuego');
 });
 
-test('minijuegos: la aguja va y viene entre 0 y 1000; las preguntas tienen 4 opciones distintas', () => {
+test('minijuegos: la aguja va y viene entre 0 y 1000', () => {
   const p = withMinigame('needle').minigame.params;
   for (let ms = 0; ms < 5000; ms += 7) {
     const x = needlePos(p, ms);
     assert.ok(x >= 0 && x <= 1000);
-  }
-  for (let seed = 0; seed < 50; seed++) {
-    for (const q of withMinigame('math', seed).minigame.params.questions) {
-      assert.equal(new Set(q.options).size, 4);
-      assert.ok(q.answer >= 0 && q.answer < 4);
-    }
   }
 });
 

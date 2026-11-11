@@ -60,11 +60,8 @@ export function randomEntry(rng, st, p) {
     case 'needle': return { ms: rng.int(0, params.maxMs) };
     case 'count': return { guess: rng.int(Math.max(0, params.n - 5), params.n + 5), ms: ms() };
     case 'simon': return { reached: rng.int(0, params.seq.length), ms: ms() };
-    case 'math': return { answers: params.questions.map(() => rng.int(-1, 3)), ms: ms() };
     case 'mash': return { taps: rng.int(0, params.maxTaps) };
     case 'rps': return { picks: Array.from({ length: params.picks }, () => rng.int(0, 2)) };
-    case 'auction': return { bid: rng.int(0, st.players[p].coins) };
-    case 'cards': return { pick: rng.int(0, params.cards[p].length - 1) };
     default: throw new Error(`Minijuego sin guion: ${id}`);
   }
 }
