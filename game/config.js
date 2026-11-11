@@ -30,8 +30,10 @@ export const DEFAULT_CONFIG = deepFreeze({
   // --- Física ---
   physics: {
     gravity: 0.15,     // unidades / tick²
-    speedMin: 7,       // velocidad con potencia 0 %
-    speedMax: 17.5,    // velocidad con potencia 100 %
+    // El campo mide 2400 (antes 1600): la velocidad crece ×1,29 para que el
+    // alcance (∝ v²) crezca en la misma proporción que la distancia.
+    speedMin: 9,       // velocidad con potencia 0 %
+    speedMax: 22.5,    // velocidad con potencia 100 %
     maxTicks: 900,     // límite de seguridad de la simulación
   },
 
@@ -50,6 +52,9 @@ export const DEFAULT_CONFIG = deepFreeze({
   },
   maxParticles: 220,       // cohetes simulados como máximo (cada uno puede representar varios)
   maxRocketsPerShot: 180,  // tope de cohetes "reales" por disparo
+
+  // --- Mapas (ver maps.js): la semilla elige uno al azar y vale para TODA la partida ---
+  maps: ['hills', 'wall', 'islands', 'canyon', 'volcano'],
 
   // --- Compuertas ---
   gates: {
@@ -71,23 +76,24 @@ export const DEFAULT_CONFIG = deepFreeze({
   // gateMultPct: qué tanto aprovecha las compuertas (xM efectivo = 1 + (M-1)·pct/100)
   // clusterSplit: si > 0, cada cohete base se divide solo en N al llegar a lo más alto
   // hitboxPad:   margen extra alrededor del castillo rival (daño de área)
+  // craterR:     radio (unidades) del cráter que deja al caer en terreno elevado
   // Balanceadas con bot normal vs normal (100 partidas por pareja, con curación):
   // todas las parejas entre 46 % y 57 %.
   weapons: {
     burst: {
       label: 'Ráfaga', icon: '🚀',
       desc: 'Equilibrada: varios cohetes que aprovechan al máximo las compuertas.',
-      rocketsPct: 100, damagePct: 100, gateMultPct: 100, clusterSplit: 0, clusterSpreadDeg: 0, hitboxPad: 0,
+      rocketsPct: 100, damagePct: 100, gateMultPct: 100, clusterSplit: 0, clusterSpreadDeg: 0, hitboxPad: 0, craterR: 22,
     },
     mortar: {
       label: 'Mortero', icon: '💣',
       desc: 'Un proyectil pesado con mucho daño y área amplia, pero las compuertas rinden menos.',
-      rocketsPct: 34, damagePct: 650, gateMultPct: 60, clusterSplit: 0, clusterSpreadDeg: 0, hitboxPad: 80,
+      rocketsPct: 34, damagePct: 650, gateMultPct: 60, clusterSplit: 0, clusterSpreadDeg: 0, hitboxPad: 80, craterR: 95,
     },
     cluster: {
       label: 'Racimo', icon: '🎆',
       desc: 'Se divide solo en lo más alto: cohetes más débiles pero muy repartidos.',
-      rocketsPct: 100, damagePct: 92, gateMultPct: 100, clusterSplit: 4, clusterSpreadDeg: 5, hitboxPad: 0,
+      rocketsPct: 100, damagePct: 92, gateMultPct: 100, clusterSplit: 4, clusterSpreadDeg: 5, hitboxPad: 0, craterR: 16,
     },
   },
 
@@ -95,12 +101,13 @@ export const DEFAULT_CONFIG = deepFreeze({
   // Cada ronda la semilla elige uno del `pool` (nunca el mismo dos veces
   // seguidas); quien gana abre la ronda. Reglas y textos en game/minigames.js.
   minigames: {
-    pool: ['needle', 'count', 'simon', 'mash', 'rps'],
+    pool: ['needle', 'count', 'simon', 'mash', 'rps', 'maze'],
     needle: { periodMinMs: 900, periodMaxMs: 1400, maxMs: 8000 },   // una ida = medio periodo
     count: { min: 18, max: 40, showMs: 1600, timeMs: 12000 },       // puntos, tiempo a la vista, tiempo para responder
     simon: { length: 10, colors: 4 },
     mash: { durationMs: 3000, maxTaps: 80 },
     rps: { picks: 3 },
+    maze: { size: 9, extra: 6, timeMs: 45000 },                     // lado del cuadrado, paredes que se tiran, tiempo máximo
   },
 
   // --- Partida ---

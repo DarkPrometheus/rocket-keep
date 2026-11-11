@@ -61,6 +61,7 @@ export function randomEntry(rng, st, p) {
     case 'count': return { guess: rng.int(Math.max(0, params.n - 5), params.n + 5), ms: ms() };
     case 'simon': return { reached: rng.int(0, params.seq.length), ms: ms() };
     case 'mash': return { taps: rng.int(0, params.maxTaps) };
+    case 'maze': return { ms: ms(), done: rng.int(0, 1) };
     case 'rps': return { picks: Array.from({ length: params.picks }, () => rng.int(0, 2)) };
     default: throw new Error(`Minijuego sin guion: ${id}`);
   }

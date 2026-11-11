@@ -2,6 +2,7 @@
 // world.js — Geometría fija del campo y matemática determinista.
 //
 // Lo usan la lógica (para simular) y el render (para dibujar lo mismo).
+// El campo es más ancho que la pantalla: el render lo recorre con una cámara.
 // Todos los puntos son ENTEROS escritos a mano/generados una vez, así
 // no dependen de Math.sin/Math.cos (que pueden variar en el último
 // decimal entre navegadores). Las funciones trigonométricas que necesita
@@ -13,7 +14,7 @@
 // =============================================================
 
 export const WORLD = Object.freeze({
-  width: 1600,
+  width: 2400,
   height: 900,
   groundY: 785,
 });
@@ -21,56 +22,17 @@ export const WORLD = Object.freeze({
 /** Boca del lanzador de cada jugador. */
 export const LAUNCHERS = Object.freeze([
   Object.freeze({ x: 205, y: 620 }),
-  Object.freeze({ x: 1395, y: 620 }),
+  Object.freeze({ x: 2195, y: 620 }),
 ]);
 
 /** Caja de impacto de cada castillo: [x0, y0, x1, y1]. */
 export const CASTLE_BOXES = Object.freeze([
   Object.freeze([45, 560, 255, 785]),
-  Object.freeze([1345, 560, 1555, 785]),
+  Object.freeze([2145, 560, 2355, 785]),
 ]);
 
-/** Silueta de las colinas (polilínea de enteros); fuera de ella el suelo es plano. */
-export const TERRAIN = Object.freeze([
-  [400, 785], [416, 783], [432, 777], [448, 767], [464, 754], [480, 738], [496, 720], [512, 699],
-  [528, 677], [544, 654], [560, 631], [576, 609], [592, 588], [608, 569], [624, 552], [640, 539],
-  [656, 529], [672, 523], [688, 520], [704, 522], [720, 531], [736, 545], [752, 564], [768, 587],
-  [784, 613], [800, 640], [816, 613], [832, 587], [848, 564], [864, 545], [880, 531], [896, 522],
-  [912, 520], [928, 523], [944, 529], [960, 539], [976, 552], [992, 569], [1008, 588], [1024, 609],
-  [1040, 631], [1056, 654], [1072, 677], [1088, 699], [1104, 720], [1120, 738], [1136, 754], [1152, 767],
-  [1168, 777], [1184, 783], [1200, 785],
-]);
-
-/**
- * Ranuras donde puede aparecer una compuerta. Cada compuerta es un
- * segmento [x0, y0, x1, y1] colocado en forma radial alrededor de las
- * colinas (como un arco). Están en pares simétricos para que el campo
- * sea igual de justo para ambos jugadores, más dos ranuras centrales.
- */
-export const GATE_SLOTS = Object.freeze({
-  pairs: [
-    [[575, 570, 506, 530], [1025, 570, 1094, 530]],
-    [[670, 475, 630, 406], [930, 475, 970, 406]],
-    [[424, 563, 349, 536], [1176, 563, 1251, 536]],
-    [[517, 417, 461, 361], [1083, 417, 1139, 361]],
-    [[650, 329, 620, 255], [950, 329, 980, 255]],
-  ],
-  center: [
-    [800, 440, 800, 360],
-    [800, 300, 800, 220],
-  ],
-});
-
-/** Altura del terreno en x (interpolación lineal de la polilínea). */
-export function terrainY(x) {
-  const t = TERRAIN;
-  if (x <= t[0][0] || x >= t[t.length - 1][0]) return WORLD.groundY;
-  // Los puntos están cada 16 unidades: índice directo.
-  const i = Math.floor((x - t[0][0]) / 16);
-  const [x0, y0] = t[i];
-  const [x1, y1] = t[i + 1];
-  return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
-}
+// El terreno, los obstáculos y las ranuras de compuertas dependen del mapa
+// de cada ronda: ver maps.js.
 
 // ---------- trigonometría determinista ----------
 

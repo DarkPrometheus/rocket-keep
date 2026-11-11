@@ -1,5 +1,45 @@
 # Registro de cambios
 
+## 2026-11-10 — Bot más rápido en los minijuegos
+
+- El bot entrega su resultado del minijuego casi al instante (0,3–0,8 s) en vez de esperar
+  lo que tardaría un humano. Su habilidad no cambia: el tiempo que cuenta va en el resultado.
+
+## 2026-11-10 — Disparo con barra de carga
+
+- Arrastrar (o mover el ratón) ahora solo fija el **ángulo**. La potencia sale de una barra
+  que se carga **manteniendo el clic** —sobre el campo o sobre Disparar—: se llena en 1,5 s y
+  al soltar dispara; más carga, más lejos. El teclado ya no dispara (solo ↑/↓ para el ángulo). Soltar casi sin carga (menos del 6 %) no dispara y avisa cómo se usa.
+  Mientras se carga, la mira muestra la trayectoria con la potencia actual.
+
+## 2026-11-10 — Terreno destructible (cráteres)
+
+- Los cohetes que caen en terreno elevado dejan un **cráter**: el suelo (`field.ground`,
+  101 alturas) baja en un cuenco alrededor del impacto. Radio por arma (`craterR`): Ráfaga 22,
+  Racimo 16, Mortero 95; crece un poco si el cohete representa a muchos.
+- Los cráteres duran toda la partida (el mapa y el suelo se conservan entre rondas) y nunca
+  bajan del nivel llano donde están los castillos. Los árboles caen con el suelo.
+- La mira, el bot y la simulación usan el suelo actual; el dibujo lo hunde en el instante del
+  impacto. Protocolo 8.
+
+## 2026-11-10 — Minijuego Laberinto
+
+- Nuevo minijuego **Laberinto** 🧭: cuadrado de 9×9 generado con la semilla (igual para los
+  dos); se recorre con las flechas o WASD, y en el celular con botones de flechas (mantener
+  pulsado sigue avanzando). Gana quien llegue antes a la meta; llegar gana a no llegar.
+- El bot lo juega siguiendo el camino más corto según su dificultad.
+
+## 2026-11-10 — Mapa más grande y obstáculos
+
+- El campo pasa de 1600 a 2400 de ancho y se ve **completo, sin zoom** en cualquier
+  pantalla (textos, barras y cohetes se agrandan solos cuando se ve pequeño).
+- 5 mapas con obstáculos (`game/maps.js`): Dos colinas (con roca flotante), La muralla,
+  Islas flotantes, El cañón (mesetas y aguja de roca) y El volcán. Se sortea uno al azar
+  al empezar la partida y no cambia entre rondas (la revancha sortea otro). Los cohetes
+  explotan al chocar con un obstáculo.
+- Física: velocidades ×1,29 para que el alcance crezca con el campo. Protocolo 7.
+- Desarrollo: `?map=wall,canyon` limita los mapas.
+
 ## 2026-11-10 — Menos minijuegos, teléfono en horizontal
 
 - Quitados Cálculo rápido, Subasta secreta y Cartas: quedan 5 minijuegos (Aguja, Cuenta

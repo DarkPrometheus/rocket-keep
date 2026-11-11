@@ -7,8 +7,10 @@
 //   aunque el host ya haya avanzado.
 // - Mantiene `shown`: el estado que el jugador está viendo ahora mismo
 //   (puede ir por detrás del estado real del cliente mientras se anima).
-// - Traduce el puntero en mira { angle, power } (preguntándole al render,
-//   que es quien conoce la pantalla) y manda intenciones al cliente.
+// - Traduce el puntero en el ÁNGULO de la mira (preguntándole al render, que es
+//   quien conoce la pantalla). La POTENCIA sale de una barra que se carga
+//   MANTENIENDO EL CLIC (sobre el campo o sobre el botón Disparar): al soltar,
+//   dispara. Manda intenciones al cliente.
 // - Calcula un "modelo de vista" y se lo pasa a la UI (ui.js), que solo
 //   dibuja DOM y devuelve clics.
 //
@@ -21,6 +23,8 @@ import * as L from './logic.js';
 const PAUSE_BETWEEN_SHOTS_MS = 350;
 // Mira inicial neutra: se queda corta a propósito para que haya que apuntar.
 const DEFAULT_AIM = Object.freeze({ angle: 35, power: 40 });
+const CHARGE_MS = 1500;   // lo que tarda en llenarse la barra de carga
+const CHARGE_MIN = 0.06;  // por debajo de esto, soltar cancela (un toque suelto no gasta el turno)
 
 export class Controller {
   #client;
@@ -37,6 +41,7 @@ export class Controller {
   #shown = null;      // estado mostrado
   #aim = null;        // mira actual: { angle, power }
   #dragging = false;
+  #charge = null;     // carga en curso: { t0, prevPower, raf }
   #firedThisTurn = null;
   #rematch = { me: false, opp: false };
   #match = 0;         // cuenta partidas (para no confundir minijuegos tras una revancha)
@@ -68,7 +73,9 @@ export class Controller {
         client.pickWeapon(id);
         this.#refreshUi();
       },
-      onFire: () => this.fire(),
+      onChargeStart: () => this.startCharge(),
+      onChargeEnd: () => this.releaseCharge(),
+      onChargeCancel: () => this.cancelCharge(),
       onBuy: (id) => client.buy(id),
       onReady: () => client.ready(),
       onRematch: () => {
@@ -124,6 +131,8 @@ export class Controller {
 
   destroy() {
     this.#destroyed = true;
+    if (this.#charge) cancelAnimationFrame(this.#charge.raf);
+    this.#charge = null;
     this.#queue.length = 0;
     this.#ui.minigame.close();
     this.#unsubs.forEach((u) => u());
@@ -206,36 +215,47 @@ export class Controller {
 
   #bindInput() {
     const cv = this.#canvas;
+    // Arrastrar (o mover el ratón) solo cambia el ÁNGULO; la potencia la fija la barra.
+    const aimAngle = (e) => {
+      const p = this.#renderer.pointerToAim(e.clientX, e.clientY);
+      if (p) this.#setAim({ angle: p.angle, power: (this.#aim ?? DEFAULT_AIM).power });
+    };
     const onDown = (e) => {
       if (!this.#canFire) return;
       this.#dragging = true;
-      cv.setPointerCapture?.(e.pointerId);
-      this.#setAim(this.#renderer.pointerToAim(e.clientX, e.clientY));
+      try {
+        cv.setPointerCapture?.(e.pointerId); // así el soltar llega aunque el puntero se salga del campo
+      } catch {
+        /* sin captura: el soltar solo llega si el puntero sigue sobre el campo */
+      }
+      aimAngle(e);
+      this.startCharge(); // mantener el clic carga la barra
     };
     const onMove = (e) => {
-      if (this.#dragging || (e.pointerType === 'mouse' && this.#canFire)) {
-        this.#setAim(this.#renderer.pointerToAim(e.clientX, e.clientY));
-      }
+      if (this.#dragging || (e.pointerType === 'mouse' && this.#canFire)) aimAngle(e);
     };
     const onUp = () => {
       if (!this.#dragging) return;
       this.#dragging = false;
-      this.fire(); // soltar = disparar
+      this.releaseCharge(); // soltar dispara
     };
-    const onCancel = () => (this.#dragging = false);
+    const onCancel = () => {
+      this.#dragging = false;
+      this.cancelCharge();
+    };
     const onKey = (e) => {
-      if (e.target?.closest?.('input, button, select, textarea, [contenteditable]')) return;
+      const t = e.target;
+      if (t?.closest?.('input, select, textarea, [contenteditable]')) return;
+      const onFireBtn = t?.id === 'fire';
+      if (t?.closest?.('button') && !onFireBtn) return;
       if (!this.#canFire || !this.#shown) return;
       const a = this.#shown.config.aim;
       const cur = this.#aim ?? DEFAULT_AIM;
       const step = e.shiftKey ? 5 : 1;
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      // ↑/↓ cambian el ángulo; ←/→ la potencia; Espacio/Enter dispara.
+      // ↑/↓ cambian el ángulo (el teclado no dispara: se dispara con el clic).
       if (e.key === 'ArrowUp') this.#setAim({ ...cur, angle: clamp(cur.angle + step, a.angleMin, a.angleMax) });
       else if (e.key === 'ArrowDown') this.#setAim({ ...cur, angle: clamp(cur.angle - step, a.angleMin, a.angleMax) });
-      else if (e.key === 'ArrowRight') this.#setAim({ ...cur, power: clamp(cur.power + step, a.powerMin, a.powerMax) });
-      else if (e.key === 'ArrowLeft') this.#setAim({ ...cur, power: clamp(cur.power - step, a.powerMin, a.powerMax) });
-      else if (e.key === ' ' || e.key === 'Enter') this.fire();
       else return;
       e.preventDefault();
     };
@@ -258,6 +278,55 @@ export class Controller {
     if (!aim) return;
     this.#aim = aim;
     this.#renderer.setAim(aim);
+  }
+
+  // ---------- carga de potencia ----------
+
+  /** Empieza a llenar la barra (se mantiene el clic en el campo o en Disparar). */
+  startCharge() {
+    if (!this.#canFire || this.#charge) return;
+    const a = this.#shown.config.aim;
+    const charge = { t0: performance.now(), prevPower: (this.#aim ?? DEFAULT_AIM).power, raf: 0 };
+    this.#charge = charge;
+    const loop = (now) => {
+      if (this.#charge !== charge) return;
+      if (!this.#canFire) return this.cancelCharge(); // cambió el turno o hay animación
+      const level = Math.min(1, (now - charge.t0) / CHARGE_MS);
+      this.#setAim({ ...(this.#aim ?? DEFAULT_AIM), power: a.powerMin + level * (a.powerMax - a.powerMin) });
+      this.#ui.setCharge(level, 'hold');
+      charge.raf = requestAnimationFrame(loop);
+    };
+    this.#ui.setCharge(0, 'hold');
+    charge.raf = requestAnimationFrame(loop);
+  }
+
+  /** Suelta el botón: dispara con la carga que lleva (o cancela si apenas cargó). */
+  releaseCharge() {
+    const c = this.#charge;
+    if (!c || !this.#shown) return;
+    cancelAnimationFrame(c.raf);
+    this.#charge = null;
+    const a = this.#shown.config.aim;
+    const level = Math.min(1, (performance.now() - c.t0) / CHARGE_MS);
+    this.#ui.setCharge(0, 'idle');
+    if (level < CHARGE_MIN || !this.#canFire) {
+      this.#setAim({ ...(this.#aim ?? DEFAULT_AIM), power: c.prevPower });
+      // Un clic muy corto no dispara: se avisa cómo se usa.
+      if (level < CHARGE_MIN && this.#canFire) this.#ui.toast('Mantén pulsado para cargar y suelta para disparar');
+      return;
+    }
+    this.#setAim({ ...(this.#aim ?? DEFAULT_AIM), power: a.powerMin + level * (a.powerMax - a.powerMin) });
+    this.fire();
+  }
+
+  /** Cancela la carga sin disparar. */
+  cancelCharge() {
+    const c = this.#charge;
+    if (!c) return;
+    cancelAnimationFrame(c.raf);
+    this.#charge = null;
+    this.#ui.setCharge(0, 'idle');
+    this.#setAim({ ...(this.#aim ?? DEFAULT_AIM), power: c.prevPower });
   }
 
   /** Dispara con la mira actual. */

@@ -11,7 +11,7 @@
 // Todos los mensajes son objetos JSON planos con un campo `type`.
 // =============================================================
 
-export const PROTOCOL_VERSION = 6; // 6: juego en línea (reingreso y estado de conexión)
+export const PROTOCOL_VERSION = 8; // 8: terreno destructible (field.ground)
 
 /** Cliente → host */
 export const C2H = Object.freeze({

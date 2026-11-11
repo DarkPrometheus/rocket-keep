@@ -203,6 +203,7 @@ const GOOD_BAD = {
   count: (p) => [{ guess: p.n, ms: 4000 }, { guess: p.n + 3, ms: 1000 }],
   simon: () => [{ reached: 7, ms: 20000 }, { reached: 6, ms: 9000 }],
   mash: () => [{ taps: 25 }, { taps: 24 }],
+  maze: () => [{ ms: 9000, done: 1 }, { ms: 4000, done: 0 }], // llegar siempre gana a no llegar
   rps: () => [{ picks: [0, 1, 2] }, { picks: [0, 0, 1] }], // empate y luego papel > piedra
 };
 
@@ -254,6 +255,7 @@ test('minijuegos: validaciones de entradas', () => {
     count: [{ guess: 'x', ms: 1 }, { guess: 3 }],
     simon: [{ reached: 99, ms: 1 }],
     mash: [{ taps: 500 }, {}],
+    maze: [{ ms: -1, done: 1 }, { ms: 1000, done: 2 }, { ms: 1000 }],
     rps: [{ picks: [0, 1] }, { picks: [0, 1, 3] }],
   };
   for (const [id, entries] of Object.entries(bad)) {

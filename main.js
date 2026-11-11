@@ -234,8 +234,13 @@ const params = new URLSearchParams(location.search);
 /** Config de la partida (la normal, salvo los parámetros de desarrollo). */
 function devConfig() {
   const only = params.get('minigame')?.split(',').filter((id) => DEFAULT_CONFIG.minigames.pool.includes(id));
-  if (!only?.length) return DEFAULT_CONFIG;
-  return { ...DEFAULT_CONFIG, minigames: { ...DEFAULT_CONFIG.minigames, pool: only } };
+  const maps = params.get('map')?.split(',').filter((id) => DEFAULT_CONFIG.maps.includes(id));
+  if (!only?.length && !maps?.length) return DEFAULT_CONFIG;
+  return {
+    ...DEFAULT_CONFIG,
+    ...(maps?.length ? { maps } : {}),
+    minigames: { ...DEFAULT_CONFIG.minigames, ...(only?.length ? { pool: only } : {}) },
+  };
 }
 const hashCode = normalizeCode(location.hash.slice(1));
 if (hashCode) {

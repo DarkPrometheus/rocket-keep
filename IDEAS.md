@@ -4,7 +4,7 @@ Ideas anotadas para más adelante (no implementadas).
 
 ## Minijuegos (para decidir quién abre la ronda)
 
-Ya implementados: Detén la aguja, Cuenta rápida, Simón, Machaca y Piedra-papel-tijera
+Ya implementados: Detén la aguja, Cuenta rápida, Simón, Machaca, Piedra-papel-tijera y Laberinto
 (ver `game/minigames.js`).
 
 | Minijuego | Cómo funciona | Tipo |

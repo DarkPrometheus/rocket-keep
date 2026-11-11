@@ -30,13 +30,15 @@ Los módulos ES no cargan abriendo `index.html` con doble clic (`file://`), así
 falta un servidor estático. Desde esta carpeta:
 
 ```bash
-python -m http.server 8000
+python serve.py 8000   # como http.server, pero sin caché: al recargar siempre ves los cambios
 ```
 
 y abre <http://localhost:8000>. Cualquier otro servidor estático sirve igual.
 
-- **Jugar:** arrastra desde tu castillo: la dirección es el ángulo y la distancia, la
-  potencia. Suelta para disparar. Teclado: ↑/↓ ángulo, ←/→ potencia, Espacio dispara.
+- **Jugar:** mueve el ratón (o arrastra el dedo) para apuntar: la dirección es el ángulo.
+  **Mantén el clic** (sobre el campo o sobre el botón Disparar) para cargar la barra de potencia
+  (se llena en 1,5 s): cuanta más carga, más lejos va; **suelta para disparar**. Un clic muy
+  corto no dispara (avisa cómo se usa). Teclado: ↑/↓ ángulo; el teclado no dispara.
 - **`debug.html`:** inspector de la lógica (compuertas de una semilla, mapa de daño por
   ángulo × potencia, partida simulada y huella de determinismo).
 
@@ -111,7 +113,7 @@ hashes en una cadena. El test la compara con un valor de referencia: si cambias 
 a propósito, actualízalo. Para comprobar otro navegador (Firefox, Safari en el celular),
 abre `debug.html`, pulsa «Calcular huella» y compárala con la del test.
 - **Parámetros de desarrollo:** `?play=easy|normal|hard` empieza sin menú;
-  `?autofire=<ms>` dispara solo (para capturas); `?minigame=needle,simon` limita los
+  `?autofire=<ms>` dispara solo (para capturas); `?map=wall,canyon` y `?minigame=needle,simon` limitan los mapas y los
   minijuegos a esos ids.
 
 ## Arquitectura
@@ -127,7 +129,8 @@ abre `debug.html`, pulsa «Calcular huella» y compárala con la del test.
 | Archivo | Responsabilidad |
 |---|---|
 | `game/logic.js` | Reglas **puras y deterministas**: estado, física de la ráfaga, compuertas, daño, economía, rondas y victoria. Sin DOM, sin `Math.random`. |
-| `game/world.js` | Geometría fija del campo (enteros) y `dsin`/`dcos` deterministas. |
+| `game/world.js` | Tamaño del campo (2400 × 900), castillos y `dsin`/`dcos` deterministas. |
+| `game/maps.js` | Los 5 mapas (terreno, obstáculos y ranuras de compuertas), el suelo destructible (`carve`); se sortea un mapa al azar y vale para toda la partida. |
 | `game/rng.js` | Generador con semilla (mulberry32) y hashes. |
 | `game/minigames.js` | Minijuegos de inicio de ronda: generación con semilla, validación y quién gana (puro). |
 | `game/minigames-ui.js` | Interfaz DOM de los minijuegos: los muestra, mide al jugador y devuelve su resultado. |
@@ -183,8 +186,8 @@ calculan con una serie de Taylor propia. Los dos lados del campo son espejo exac
 - [x] Curación al inicio de cada ronda (30 de vida), mejorable con «Reparación» en la tienda.
 - [x] Perks pasivos de compra única: Blindaje, Ahorro y Ojo de halcón (se añaden más en
   `config.perks`).
-- [x] Minijuego en cada ronda (5): Detén la aguja, Cuenta rápida, Simón, Machaca y
-  Piedra-papel-tijera. Gana = abre la ronda.
+- [x] Minijuego en cada ronda (6): Detén la aguja, Cuenta rápida, Simón, Machaca,
+  Piedra-papel-tijera y Laberinto (flechas del teclado o botones en pantalla). Gana = abre la ronda.
 - [x] Sin límite de rondas: solo se gana por derribo.
 - Ideas anotadas para después (más minijuegos y armas): `IDEAS.md`.
 - [x] Sonido de combate, interfaz y minijuegos, con volumen y silencio persistentes.

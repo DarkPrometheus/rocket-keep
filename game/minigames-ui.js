@@ -337,6 +337,71 @@ const GAMES = {
     });
   },
 
+  maze(body, { params }, submit, h) {
+    const n = params.n;
+    const goal = n * n - 1;
+    const delta = [-n, 1, n, -1];
+    const cells = params.open
+      .map((m, i) => {
+        const x = i % n, y = (i - x) / n;
+        const walls = [!(m & 1) && 'wn', !(m & 8) && 'ww', x === n - 1 && 'we', y === n - 1 && 'ws'].filter(Boolean);
+        return `<i class="${walls.join(' ')}"></i>`;
+      })
+      .join('');
+    body.innerHTML = `<div class="mg-mazewrap">
+        <div class="mg-maze" style="--n:${n}">${cells}
+          <b class="mg-goal" style="--x:${n - 1};--y:${n - 1}">🏁</b><b class="mg-me" style="--x:0;--y:0"></b></div>
+        <div class="mg-pad">${[0, 3, 1, 2].map((d) => `<button data-dir="${d}" aria-label="${['Arriba', 'Derecha', 'Abajo', 'Izquierda'][d]}">${['▲', '▶', '▼', '◀'][d]}</button>`).join('')}</div>
+      </div>`;
+    const cellEls = body.querySelectorAll('.mg-maze > i');
+    const me = body.querySelector('.mg-me');
+    const t0 = performance.now();
+    let pos = 0;
+    let finished = false;
+    cellEls[0].classList.add('seen');
+    const move = (d) => {
+      if (finished || !(params.open[pos] & (1 << d))) return; // pared: no pasa nada
+      pos += delta[d];
+      me.style.setProperty('--x', pos % n);
+      me.style.setProperty('--y', Math.floor(pos / n));
+      cellEls[pos].classList.add('seen');
+      h.sound('tick');
+      if (pos === goal) {
+        finished = true;
+        const ms = Math.floor(performance.now() - t0);
+        h.sound('success');
+        h.timeout(() => submit({ ms, done: 1 }), 350); // se alcanza a ver que llegó
+      }
+    };
+    // Teclado: flechas o WASD (mantener pulsado repite).
+    const KEYS = { ArrowUp: 0, w: 0, W: 0, ArrowRight: 1, d: 1, D: 1, ArrowDown: 2, s: 2, S: 2, ArrowLeft: 3, a: 3, A: 3 };
+    h.on(window, 'keydown', (e) => {
+      if (e.target?.closest?.('.sound-controls') || !(e.key in KEYS)) return;
+      e.preventDefault();
+      move(KEYS[e.key]);
+    });
+    // Botones táctiles: mantener pulsado sigue avanzando.
+    let repeat = 0;
+    const stop = () => {
+      clearInterval(repeat);
+      repeat = 0;
+    };
+    h.cleanup(stop);
+    h.on(body, 'pointerdown', (e) => {
+      const b = e.target.closest('[data-dir]');
+      if (!b) return;
+      e.preventDefault();
+      const d = Number(b.dataset.dir);
+      stop();
+      move(d);
+      repeat = setInterval(() => move(d), 140);
+    });
+    h.on(window, 'pointerup', stop);
+    h.on(window, 'pointercancel', stop);
+    h.timerBar(body, params.timeMs);
+    h.timeout(() => submit({ ms: params.timeMs, done: finished ? 1 : 0 }), params.timeMs);
+  },
+
   rps(body, { params }, submit, h) {
     const picks = [];
     const render = () => {
@@ -377,6 +442,7 @@ const RESULTS = {
   count: (info, me, op) => `<p class="mg-big">Había ${info.params.n}</p>` + both(info, me, op, (e) => `${e.guess} · ${fmtS(e.ms)}`),
   simon: (info, me, op) => both(info, me, op, (e) => `nivel ${e.reached} · ${fmtS(e.ms)}`),
   mash: (info, me, op) => both(info, me, op, (e) => `${e.taps} toques`),
+  maze: (info, me, op) => both(info, me, op, (e) => (e.done ? fmtS(e.ms) : 'No llegó a la meta')),
   rps: (info, me, op) => {
     const a = info.entries[me].picks, b = info.entries[op].picks;
     const decisive = a.findIndex((x, i) => x !== b[i]);

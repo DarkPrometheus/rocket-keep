@@ -22,7 +22,8 @@
 // Los efectos (humo, explosiones, sacudida) viven en effects.js.
 // =============================================================
 
-import { WORLD, LAUNCHERS, CASTLE_BOXES, TERRAIN, terrainY } from './world.js';
+import { WORLD, LAUNCHERS, CASTLE_BOXES } from './world.js';
+import { mapOf, mapGround, groundOf, terrainY, carve, GROUND_X0, GROUND_STEP } from './maps.js';
 import { aimPreview, particlePos } from './logic.js';
 import { Effects, Shake } from './effects.js';
 
@@ -33,6 +34,15 @@ const TICKS_PER_SEC = 60;      // velocidad de reproducción de la simulación
 const AIM_MIN_DIST = 40;       // distancia del puntero al cañón = potencia mínima
 const AIM_MAX_DIST = 380;      // … y potencia máxima
 const BARREL_LEN = 64;
+
+// Colores del terreno y de los obstáculos por mapa.
+const PALETTES = {
+  hills:   { hill: '#4f3a26', edge: '#5c9e3f', rock: '#8a8f99', rockEdge: '#b8bcc4', trees: true },
+  wall:    { hill: '#5a4632', edge: '#6aa84a', rock: '#8c8f96', rockEdge: '#c3c7cf', trees: true },
+  islands: { hill: '#4b4a3a', edge: '#6fb04f', rock: '#6b4a2e', rockEdge: '#5c9e3f', trees: true },
+  canyon:  { hill: '#9a6038', edge: '#d49a5a', rock: '#8a5a3a', rockEdge: '#d49a5a', trees: false },
+  volcano: { hill: '#3b2a27', edge: '#d9542b', rock: '#4a3a38', rockEdge: '#d9542b', trees: false },
+};
 
 const COLORS = {
   skyTop: '#5fbbe8',
@@ -86,10 +96,17 @@ export class CanvasRenderer {
   #gateFlash = new Map(); // id de compuerta → instante del último cruce
   #effects = new Effects();
   #shake = new Shake();
-  #cam = { x: 0 };      // paneo suave de la cámara
+  #ground = null;       // alturas del suelo que se ven ahora (cambian al caer los cohetes)
+  #cam = { x: 0 };      // posición horizontal de la cámara (mundo)
+  #camReady = false;
+  #visW = 1600;         // ancho de mundo que se ve ahora mismo
+  #focus = 0;           // hacia dónde mira la cámara (x de pantalla del mundo)
+  #manualX = null;      // el jugador movió la vista con el minimapa
+  #mmDrag = false;
   #emit = [0, 0];       // acumuladores de humo de cada castillo
   #last = 0;
-  #trees;
+  #trees = new Map(); // árboles por mapa
+  #unbindMinimap = null;
   #onResize;
   #sound;
   #timers = new Set();
@@ -101,7 +118,7 @@ export class CanvasRenderer {
     this.#onResize = () => this.#resize();
     window.addEventListener('resize', this.#onResize);
     this.#resize();
-    this.#trees = this.#makeTrees();
+    this.#bindMinimap();
     // Un solo reloj (performance.now) para el bucle y para las animaciones.
     const loop = () => {
       this.#frame(performance.now() / 1000);
@@ -118,6 +135,7 @@ export class CanvasRenderer {
     anim?.onDone();
     cancelAnimationFrame(this.#raf);
     window.removeEventListener('resize', this.#onResize);
+    this.#unbindMinimap?.();
   }
 
   // ---------- interfaz pública ----------
@@ -127,6 +145,7 @@ export class CanvasRenderer {
     this.#state = state;
     this.#me = me;
     if (!this.#anim && state) this.#hpShown = state.players.map((p) => p.hp);
+    if (!this.#anim) this.#ground = state?.field ? [...groundOf(state.field)] : null;
     // Ronda nueva: muestra la reparación de cada castillo ("+60" en verde).
     if (state && state.field && state.round !== prevRound) {
       const now = performance.now() / 1000;
@@ -149,7 +168,7 @@ export class CanvasRenderer {
   pointerToAim(clientX, clientY) {
     if (!this.#state) return null;
     const r = this.#canvas.getBoundingClientRect();
-    const wx = (clientX - r.left - this.#view.ox) / this.#view.scale;
+    const wx = (clientX - r.left) / this.#view.scale + this.#cam.x;
     const wy = (clientY - r.top - this.#view.oy) / this.#view.scale;
     const L = this.#localLauncher();
     const dx = Math.max(1, wx - L.x);
@@ -163,6 +182,7 @@ export class CanvasRenderer {
 
   playShot(result) {
     return new Promise((resolve) => {
+      this.#manualX = null; // la cámara vuelve a seguir la acción
       this.#barrel[result.shooter] = result.angle;
       const last = Math.max(...result.particles.map((p) => p.t1));
       this.#hpShown[1 - result.shooter] = result.hpBefore;
@@ -191,8 +211,10 @@ export class CanvasRenderer {
     const ch = this.#canvas.clientHeight;
     this.#canvas.width = Math.round(cw * dpr);
     this.#canvas.height = Math.round(ch * dpr);
-    const scale = Math.min(cw / W, ch / H);
-    this.#view = { scale, ox: (cw - W * scale) / 2, oy: (ch - H * scale) / 2, dpr };
+    // Se ve TODO el campo (sin zoom): la escala es la que hace caber el ancho y el
+    // alto. Si sobra altura, el suelo queda abajo y el cielo se estira hacia arriba.
+    const scale = Math.min(ch / H, cw / W);
+    this.#view = { scale, ox: 0, oy: Math.max(0, ch - H * scale), dpr };
   }
 
   /** X de pantalla para una X del mundo (se refleja si el local es el jugador 1). */
@@ -276,9 +298,19 @@ export class CanvasRenderer {
         a.counter.text = `-${Math.round(shown)}`;
         a.counter.t0 = now;
         a.counter.pop = now;
-      } else if (p.end === 'hill' || p.end === 'ground') {
+      } else if (p.end === 'hill' || p.end === 'ground' || p.end === 'rock') {
         this.#sound('ground', { pan });
         fx.dust(x, y);
+        if (p.end === 'rock') fx.explosion(x, y, 0.5, { debris: true });
+        // Cráter: el suelo se hunde justo cuando cae el cohete.
+        const crater = p.end === 'hill' ? r.craters?.find((c) => c.id === p.id) : null;
+        if (crater && this.#ground) {
+          this.#ground = carve(this.#ground, crater.x, crater.y, crater.r);
+          if (crater.r >= 50) {
+            fx.explosion(x, y, 1.4 + crater.r / 70, { debris: true });
+            this.#shake.add(3);
+          }
+        }
         this.#shake.add(0.6);
       }
     }
@@ -352,11 +384,13 @@ export class CanvasRenderer {
 
     base();
     ctx.save();
+    const top = -this.#view.oy / scale; // y del mundo en el borde de arriba de la pantalla
     ctx.beginPath();
-    ctx.rect(0, 0, W, H);
+    ctx.rect(0, top, this.#visW, H - top);
     ctx.clip();
 
-    this.#drawSky(ctx);
+    const map = mapOf(this.#state.field);
+    this.#drawSky(ctx, top);
     layer(0.15);
     this.#drawClouds(ctx, now);
     layer(0.3);
@@ -364,7 +398,7 @@ export class CanvasRenderer {
     layer(0.55);
     this.#drawMountains(ctx, COLORS.mountainMid, 640, 40, 0.017);
     layer(1);
-    this.#drawHills(ctx);
+    this.#drawHills(ctx, map);
     this.#drawGround(ctx);
     this.#drawGates(ctx, now);
     for (const p of [0, 1]) this.#drawCastle(ctx, p, now);
@@ -373,11 +407,17 @@ export class CanvasRenderer {
     this.#effects.draw(ctx);
     this.#drawTexts(ctx, now);
     ctx.restore();
+    this.#drawMinimap(ctx, map);
   }
 
-  /** La cámara se desplaza un poco hacia donde va la ráfaga (da sensación de profundidad). */
+  /**
+   * Cámara: en reposo muestra el lado del jugador local (su castillo a la
+   * izquierda); durante una ráfaga sigue a los cohetes; con el minimapa el
+   * jugador puede mirar otra parte del campo.
+   */
   #updateCamera(dt, now) {
-    let target = 0;
+    const visW = this.#canvas.clientWidth / this.#view.scale;
+    this.#visW = visW;
     const a = this.#anim;
     if (a) {
       const tick = (now - a.start) * TICKS_PER_SEC;
@@ -388,29 +428,155 @@ export class CanvasRenderer {
         sum += this.#sx(particlePos(p, tick, g).x);
         n++;
       }
-      if (n) target = Math.max(-40, Math.min(40, (sum / n - W / 2) * 0.06));
+      if (n) this.#focus = sum / n + visW * 0.08; // un poco por delante de la ráfaga
+    } else {
+      this.#focus = this.#manualX ?? visW / 2;
     }
-    this.#cam.x += (target - this.#cam.x) * Math.min(1, dt * 2.5);
+    const target = visW >= W ? (W - visW) / 2 : Math.max(0, Math.min(W - visW, this.#focus - visW / 2));
+    if (!this.#camReady) {
+      this.#camReady = true;
+      this.#cam.x = target;
+    }
+    this.#cam.x += (target - this.#cam.x) * Math.min(1, dt * 3);
   }
 
-  #drawSky(ctx) {
-    const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  // ---------- minimapa ----------
+
+  /** El minimapa solo hace falta si el campo no cabe entero en pantalla. */
+  #hasMinimap() {
+    return this.#visW < W - 1;
+  }
+
+  /** Factor para agrandar textos, barras y cohetes cuando todo el campo se ve pequeño. */
+  #k() {
+    return Math.max(1, Math.min(2.2, 0.55 / this.#view.scale));
+  }
+
+  #mmRect() {
+    const cw = this.#canvas.clientWidth;
+    const w = Math.max(120, Math.min(240, cw * 0.24));
+    const compact = window.matchMedia?.('(orientation: landscape) and (max-height: 520px)').matches;
+    return { x: cw - w - 8, y: compact ? 38 : 8, w, h: w * 0.3 };
+  }
+
+  #bindMinimap() {
+    const cv = this.#canvas;
+    const inside = (e) => {
+      const r = cv.getBoundingClientRect();
+      const m = this.#mmRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top;
+      return { ok: x >= m.x && x <= m.x + m.w && y >= m.y - 4 && y <= m.y + m.h + 4, x, m };
+    };
+    const look = (e) => {
+      const { x, m } = inside(e);
+      this.#manualX = Math.max(0, Math.min(W, ((x - m.x) / m.w) * W));
+    };
+    const down = (e) => {
+      if (!this.#state?.field || !this.#hasMinimap() || !inside(e).ok) return;
+      this.#mmDrag = true;
+      cv.setPointerCapture?.(e.pointerId);
+      look(e);
+      e.stopImmediatePropagation(); // que no cuente como apuntar
+      e.preventDefault();
+    };
+    const move = (e) => {
+      if (!this.#mmDrag) return;
+      look(e);
+      e.stopImmediatePropagation();
+    };
+    const up = (e) => {
+      if (!this.#mmDrag) return;
+      this.#mmDrag = false;
+      e.stopImmediatePropagation();
+    };
+    cv.addEventListener('pointerdown', down);
+    cv.addEventListener('pointermove', move);
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    this.#unbindMinimap = () => {
+      cv.removeEventListener('pointerdown', down);
+      cv.removeEventListener('pointermove', move);
+      cv.removeEventListener('pointerup', up);
+      cv.removeEventListener('pointercancel', up);
+    };
+  }
+
+  /** Vista en miniatura de todo el campo con la zona visible marcada. */
+  #drawMinimap(ctx, map) {
+    if (!this.#hasMinimap()) return;
+    const { dpr } = this.#view;
+    const m = this.#mmRect();
+    const kx = m.w / W, ky = m.h / H;
+    const X = (wx) => m.x + this.#sx(wx) * kx;
+    const Y = (wy) => m.y + wy * ky;
+    const pal = PALETTES[map.id] ?? PALETTES.hills;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 18, 26, 0.6)';
+    this.#roundRect(ctx, m.x - 3, m.y - 3, m.w + 6, m.h + 6, 8);
+    ctx.beginPath();
+    ctx.rect(m.x, m.y, m.w, m.h);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(111, 190, 230, 0.35)';
+    ctx.fillRect(m.x, m.y, m.w, m.h);
+    // Suelo y colinas (el terreno es simétrico: da igual el orden).
+    ctx.fillStyle = pal.hill;
+    ctx.beginPath();
+    ctx.moveTo(m.x, Y(GROUND_Y));
+    for (const [sxp, y] of this.#terrainPoints(map)) ctx.lineTo(m.x + sxp * kx, Y(y));
+    ctx.lineTo(m.x + m.w, Y(GROUND_Y));
+    ctx.fill();
+    ctx.fillRect(m.x, Y(GROUND_Y), m.w, m.h);
+    // Obstáculos.
+    ctx.fillStyle = pal.rock;
+    for (const b of map.blocks) {
+      ctx.beginPath();
+      b.pts.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+      ctx.fill();
+    }
+    // Compuertas.
+    ctx.lineWidth = 2;
+    for (const g of this.#state.field.gates) {
+      ctx.strokeStyle = COLORS.gate[g.mult] ?? '#888';
+      ctx.beginPath();
+      ctx.moveTo(X(g.seg[0]), Y(g.seg[1]));
+      ctx.lineTo(X(g.seg[2]), Y(g.seg[3]));
+      ctx.stroke();
+    }
+    // Castillos.
+    for (const p of [0, 1]) {
+      const b = CASTLE_BOXES[p];
+      ctx.fillStyle = p === this.#me ? COLORS.me : COLORS.rival;
+      const x = X((b[0] + b[2]) / 2);
+      ctx.fillRect(x - 4, Y(b[1]), 8, Math.max(4, (b[3] - b[1]) * ky));
+    }
+    // Zona visible.
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    const vx = Math.max(m.x, m.x + this.#cam.x * kx);
+    const vw = Math.min(m.w, this.#visW * kx);
+    ctx.strokeRect(vx + 0.75, m.y + 0.75, Math.min(vw, m.x + m.w - vx) - 1.5, m.h - 1.5);
+    ctx.restore();
+  }
+
+  #drawSky(ctx, top = 0) {
+    const g = ctx.createLinearGradient(0, top, 0, GROUND_Y);
     g.addColorStop(0, COLORS.skyTop);
     g.addColorStop(1, COLORS.skyBottom);
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, top, this.#visW, H - top);
     // Sol
     ctx.fillStyle = 'rgba(255,248,214,0.9)';
     ctx.beginPath();
-    ctx.arc(1240, 150, 46, 0, Math.PI * 2);
+    ctx.arc(this.#visW * 0.78, 150, 46, 0, Math.PI * 2);
     ctx.fill();
   }
 
   #drawClouds(ctx, now) {
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    const span = W + 400;
-    for (const [x0, y, s, speed] of [[260, 140, 1, 8], [1180, 100, 1.3, 5], [700, 200, 0.8, 11], [1450, 300, 0.9, 7], [-100, 250, 0.7, 9]]) {
-      const x = ((x0 + now * speed) % span + span) % span - 200; // deriva lenta y continua
+    const span = W + 600;
+    for (const [x0, y, s, speed] of [[260, 140, 1, 8], [1180, 100, 1.3, 5], [700, 200, 0.8, 11], [1450, 300, 0.9, 7], [-100, 250, 0.7, 9], [1900, 160, 1.1, 6], [2250, 260, 0.8, 10], [1600, 60, 0.9, 7]]) {
+      const x = ((x0 + now * speed) % span + span) % span - 300; // deriva lenta y continua
       for (const [dx, dy, rx, ry] of [[0, 0, 60, 22], [40, -14, 40, 22], [-40, -6, 34, 18]]) {
         ctx.beginPath();
         ctx.ellipse(x + dx * s, y + dy * s, rx * s, ry * s, 0, 0, Math.PI * 2);
@@ -431,31 +597,53 @@ export class CanvasRenderer {
     ctx.fill();
   }
 
-  #makeTrees() {
-    const trees = [];
-    for (let i = 0; i < 26; i++) {
-      const side = i % 2 ? 1 : -1;
-      const x = W / 2 + side * (120 + ((i * 97) % 270));
-      trees.push({ x, y: terrainY(x), s: 0.7 + ((i * 31) % 50) / 100 });
+  /** Árboles del mapa (posiciones fijas; solo donde el mapa los admite, y simétricos). */
+  #treesFor(map) {
+    let trees = this.#trees.get(map.id);
+    if (trees) return trees;
+    trees = [];
+    if (PALETTES[map.id]?.trees) {
+      for (let i = 0; i < 34; i++) {
+        const x = 420 + ((i * 137) % 760);
+        const y = terrainY(mapGround(map), x);
+        if (y > GROUND_Y - 25) continue;
+        const sc = 0.7 + ((i * 31) % 50) / 100;
+        trees.push({ x, y, s: sc }, { x: W - x, y, s: sc });
+      }
     }
+    this.#trees.set(map.id, trees);
     return trees;
   }
 
-  #drawHills(ctx) {
-    // El terreno es simétrico, así que no hace falta reflejarlo.
-    ctx.fillStyle = COLORS.hill;
+  /** Puntos del suelo en coordenadas de pantalla, de izquierda a derecha. */
+  #terrainPoints(map) {
+    const g = this.#ground ?? mapGround(map);
+    const pts = g.map((y, i) => [this.#sx(GROUND_X0 + i * GROUND_STEP), y]);
+    return this.#me === 1 ? pts.reverse() : pts;
+  }
+
+  #drawHills(ctx, map) {
+    // El suelo ya no es simétrico (los cráteres): se dibuja reflejado si el local
+    // es el jugador 1. Los obstáculos sí: su conjunto es simétrico.
+    const pal = PALETTES[map.id] ?? PALETTES.hills;
+    const T = this.#terrainPoints(map);
+    ctx.fillStyle = pal.hill;
     ctx.beginPath();
-    ctx.moveTo(TERRAIN[0][0], GROUND_Y);
-    for (const [x, y] of TERRAIN) ctx.lineTo(x, y);
-    ctx.lineTo(TERRAIN[TERRAIN.length - 1][0], GROUND_Y);
+    ctx.moveTo(T[0][0], GROUND_Y);
+    for (const [x, y] of T) ctx.lineTo(x, y);
+    ctx.lineTo(T[T.length - 1][0], GROUND_Y);
     ctx.fill();
-    ctx.strokeStyle = COLORS.hillEdge;
+    ctx.strokeStyle = pal.edge;
     ctx.lineWidth = 10;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    TERRAIN.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    T.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.stroke();
-    for (const t of this.#trees) {
+    const ground = this.#ground ?? mapGround(map);
+    for (const base of this.#treesFor(map)) {
+      const y = terrainY(ground, base.x);
+      if (y > base.y + 6) continue; // el suelo se hundió: el árbol cayó con él
+      const t = { x: this.#sx(base.x), y, s: base.s };
       ctx.fillStyle = COLORS.treeDark;
       ctx.fillRect(t.x - 3 * t.s, t.y - 8 * t.s, 6 * t.s, 12 * t.s);
       ctx.fillStyle = COLORS.tree;
@@ -465,15 +653,58 @@ export class CanvasRenderer {
       ctx.lineTo(t.x + 17 * t.s, t.y - 4 * t.s);
       ctx.fill();
     }
+    // Obstáculos: rocas, muralla, islas, agujas…
+    for (const b of map.blocks) {
+      const path = () => {
+        ctx.beginPath();
+        b.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
+      };
+      ctx.save();
+      path();
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 6;
+      ctx.fillStyle = pal.rock;
+      ctx.fill();
+      ctx.restore();
+      // Luz arriba y sombra abajo, y el borde.
+      const [bx0, by0, bx1, by1] = b.bbox;
+      const grad = ctx.createLinearGradient(0, by0, 0, by1);
+      grad.addColorStop(0, 'rgba(255,255,255,0.22)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.28)');
+      path();
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = pal.rockEdge;
+      ctx.lineWidth = b.kind === 'island' ? 8 : 5;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      if (b.kind === 'wall' || b.kind === 'spire') {
+        // Sillares: líneas horizontales.
+        ctx.save();
+        path();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 3;
+        for (let y = by0 + 36; y < by1; y += 36) {
+          ctx.beginPath();
+          ctx.moveTo(bx0, y);
+          ctx.lineTo(bx1, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
   }
 
   #drawGround(ctx) {
     ctx.fillStyle = COLORS.grass;
-    ctx.fillRect(-100, GROUND_Y, W + 200, 18);
+    ctx.fillRect(-600, GROUND_Y, W + 1200, 18);
     ctx.fillStyle = COLORS.dirt;
-    ctx.fillRect(-100, GROUND_Y + 18, W + 200, H - GROUND_Y);
+    ctx.fillRect(-600, GROUND_Y + 18, W + 1200, H - GROUND_Y);
     ctx.fillStyle = COLORS.dirtDark;
-    for (let x = -80; x < W + 100; x += 70) ctx.fillRect(x + ((x * 13) % 30), GROUND_Y + 45 + ((x * 7) % 40), 22, 8);
+    for (let x = -580; x < W + 600; x += 70) ctx.fillRect(x + ((x * 13) % 30), GROUND_Y + 45 + ((x * 7) % 40), 22, 8);
   }
 
   #drawGates(ctx, now) {
@@ -498,7 +729,7 @@ export class CanvasRenderer {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       this.#roundRect(ctx, -len / 2, -13, len, 8, 4);
       ctx.restore();
-      ctx.font = 'bold 26px system-ui, sans-serif';
+      ctx.font = `bold ${Math.round(26 * this.#k())}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 5;
@@ -516,15 +747,20 @@ export class CanvasRenderer {
     const cfg = this.#state.config;
     const me = this.#state.players[this.#me];
     const ticks = me.perks?.includes('hawkeye') ? cfg.perks.hawkeye.value : 48;
-    const pts = aimPreview(this.#me, angle, power, cfg, ticks, 3);
+    const pts = aimPreview(this.#me, angle, power, cfg, ticks, 3, this.#state.field);
     pts.forEach((p, i) => {
       ctx.fillStyle = `rgba(255,255,255,${0.95 - (i / pts.length) * 0.75})`;
       ctx.beginPath();
-      ctx.arc(this.#sx(p.x), p.y, 6 - (i / pts.length) * 3, 0, Math.PI * 2);
+      ctx.arc(this.#sx(p.x), p.y, (6 - (i / pts.length) * 3) * this.#k(), 0, Math.PI * 2);
       ctx.fill();
     });
     const L = this.#localLauncher();
     const bx = L.x - 150, by = L.y - 300; // encima de la barra de vida
+    const k = this.#k();
+    ctx.save();
+    ctx.translate(bx, by + 56); // se agranda desde su esquina de abajo a la izquierda
+    ctx.scale(k, k);
+    ctx.translate(-bx, -(by + 56));
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     this.#roundRect(ctx, bx, by, 200, 56, 12);
     ctx.fillStyle = '#ffd34d';
@@ -533,7 +769,8 @@ export class CanvasRenderer {
     ctx.font = 'bold 20px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`${angle.toFixed(1)}°   ${power}%`, bx + 12, by + 25);
+    ctx.fillText(`${angle.toFixed(1)}°   ${Math.round(power)}%`, bx + 12, by + 25);
+    ctx.restore();
   }
 
   #drawCastle(ctx, p, now) {
@@ -619,8 +856,14 @@ export class CanvasRenderer {
 
     // Barra de vida
     const hp = Math.max(0, Math.round(this.#hpShown[p]));
-    const x = this.#sx(cx);
+    const k = this.#k();
+    // La barra agrandada no debe salirse del campo por los lados.
+    const x = Math.max(110 * k, Math.min(W - 110 * k, this.#sx(cx)));
     const by = GROUND_Y - 345;
+    ctx.save();
+    ctx.translate(x, by + 26); // la barra crece hacia arriba, lejos del castillo
+    ctx.scale(k, k);
+    ctx.translate(-x, -(by + 26));
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     this.#roundRect(ctx, x - 110, by, 220, 26, 13);
     ctx.fillStyle = team;
@@ -630,6 +873,7 @@ export class CanvasRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${hp} / ${pl.maxHp}`, x, by + 14);
+    ctx.restore();
   }
 
   #drawRockets(ctx, now, dt) {
@@ -657,7 +901,7 @@ export class CanvasRenderer {
       }
       // Racimo: el cohete base es más grande hasta que se abre.
       const clusterBase = r.weapon === 'cluster' && p.parent === -1;
-      const size = (clusterBase ? 1.5 : 1) * (1 + Math.min(0.6, Math.log10(p.weight) * 0.35));
+      const size = this.#k() * (clusterBase ? 1.5 : 1) * (1 + Math.min(0.6, Math.log10(p.weight) * 0.35));
       ctx.save();
       ctx.translate(x, pos.y);
       ctx.rotate(ang);
@@ -685,6 +929,7 @@ export class CanvasRenderer {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
+    ctx.scale(this.#k(), this.#k());
     ctx.fillStyle = '#2f343b';
     ctx.beginPath();
     ctx.ellipse(0, 0, 17, 13, 0, 0, Math.PI * 2);

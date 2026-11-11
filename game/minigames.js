@@ -43,6 +43,77 @@ export function needlePos(params, ms) {
   return u <= 1000 ? u : 2000 - u;
 }
 
+// ---------- Laberinto ----------
+
+// Direcciones: 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda.
+// `open[i]` es una máscara de bits: el bit d está encendido si desde la celda i
+// se puede pasar en la dirección d (el pasillo siempre es de doble sentido).
+const mazeDelta = (n) => [-n, 1, n, -1];
+
+/**
+ * Laberinto cuadrado n×n: recorrido en profundidad con el RNG (un único
+ * camino entre todas las celdas) y luego se tiran `extra` paredes al azar
+ * para que haya atajos y más de una ruta. Entrada arriba a la izquierda
+ * (celda 0), meta abajo a la derecha (celda n·n−1).
+ */
+function genMaze(rng, n, extra) {
+  const delta = mazeDelta(n);
+  const open = new Array(n * n).fill(0);
+  const seen = new Array(n * n).fill(false);
+  const stack = [0];
+  seen[0] = true;
+  while (stack.length) {
+    const c = stack[stack.length - 1];
+    const x = c % n, y = (c - x) / n;
+    const opts = [];
+    if (y > 0 && !seen[c - n]) opts.push(0);
+    if (x < n - 1 && !seen[c + 1]) opts.push(1);
+    if (y < n - 1 && !seen[c + n]) opts.push(2);
+    if (x > 0 && !seen[c - 1]) opts.push(3);
+    if (!opts.length) {
+      stack.pop();
+      continue;
+    }
+    const d = opts[rng.int(0, opts.length - 1)];
+    const next = c + delta[d];
+    open[c] |= 1 << d;
+    open[next] |= 1 << ((d + 2) % 4);
+    seen[next] = true;
+    stack.push(next);
+  }
+  for (let k = 0; k < extra; k++) {
+    const c = rng.int(0, n * n - 1);
+    const x = c % n, y = (c - x) / n;
+    const d = rng.int(0, 3);
+    const inside = (d === 0 && y > 0) || (d === 1 && x < n - 1) || (d === 2 && y < n - 1) || (d === 3 && x > 0);
+    if (!inside) continue;
+    open[c] |= 1 << d;
+    open[c + delta[d]] |= 1 << ((d + 2) % 4);
+  }
+  return open;
+}
+
+/** Pasos del camino más corto de la entrada a la meta (búsqueda en anchura). */
+export function mazePathLength(params) {
+  const n = params.n;
+  const delta = mazeDelta(n);
+  const dist = new Array(n * n).fill(-1);
+  const queue = [0];
+  dist[0] = 0;
+  for (let i = 0; i < queue.length; i++) {
+    const c = queue[i];
+    for (let d = 0; d < 4; d++) {
+      if (!(params.open[c] & (1 << d))) continue;
+      const next = c + delta[d];
+      if (dist[next] < 0) {
+        dist[next] = dist[c] + 1;
+        queue.push(next);
+      }
+    }
+  }
+  return dist[n * n - 1];
+}
+
 // ---------- Piedra, papel o tijera ----------
 
 /** 0 = piedra, 1 = papel, 2 = tijera. ¿`a` le gana a `b`? */
@@ -100,6 +171,15 @@ export const MINIGAMES = Object.freeze({
     validate: (e, p) => (isInt(e.taps, 0, p.maxTaps) ? null : 'Toques inválidos'),
     worst: () => ({ taps: 0 }),
     score: (p, e) => [-e.taps],
+  },
+
+  maze: {
+    label: 'Laberinto', icon: '🧭', type: 'Orientación',
+    howto: 'Llega a la meta 🏁 con las flechas del teclado (o los botones). Gana el más rápido.',
+    gen: (rng, c) => ({ n: c.size, open: genMaze(rng, c.size, c.extra), timeMs: c.timeMs }),
+    validate: (e) => (isInt(e.done, 0, 1) && isInt(e.ms, 0, MAX_MS) ? null : 'Resultado inválido'),
+    worst: (p) => ({ ms: p.timeMs, done: 0 }),
+    score: (p, e) => [1 - e.done, e.ms],
   },
 
   rps: {

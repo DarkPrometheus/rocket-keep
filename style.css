@@ -217,7 +217,12 @@ button.big { width: 100%; padding: 14px; font-size: 18px; }
   border-top: 1px solid var(--line);
 }
 #hint { flex: 1; margin: 0; font-size: 14px; color: var(--muted); }
-#fire { min-width: 160px; padding: 12px 18px; font-size: 17px; }
+#fire {
+  min-width: 160px; padding: 12px 18px; font-size: 17px; touch-action: none; position: relative;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  /* barra de carga: se llena de izquierda a derecha con --charge (0..1) */
+  background-image: linear-gradient(90deg, #f5a623 calc(var(--charge, 0) * 100%), transparent calc(var(--charge, 0) * 100%));
+}
 
 /* ---------- Minijuegos ---------- */
 .minigame { text-align: center; }
@@ -254,6 +259,34 @@ button.big { width: 100%; padding: 14px; font-size: 18px; }
 .mg-simon button { aspect-ratio: 1; border: none; opacity: 0.35; transition: opacity 0.08s, transform 0.08s; touch-action: manipulation; }
 .mg-simon button.lit { opacity: 1; transform: scale(1.05); box-shadow: 0 0 22px rgba(255, 255, 255, 0.5); }
 .mg-simon button:hover:not(:disabled) { filter: none; }
+
+/* Laberinto */
+.mg-mazewrap { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-items: center; }
+.mg-maze {
+  --wall: #d9e8c8;
+  position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr);
+  width: min(300px, 80vw, 52vh); aspect-ratio: 1; container-type: inline-size;
+  background: #1c2817; border-radius: 6px;
+}
+.mg-maze > i { box-sizing: border-box; }
+.mg-maze > i.wn { border-top: 3px solid var(--wall); }
+.mg-maze > i.ww { border-left: 3px solid var(--wall); }
+.mg-maze > i.we { border-right: 3px solid var(--wall); }
+.mg-maze > i.ws { border-bottom: 3px solid var(--wall); }
+.mg-maze > i.seen { background: rgba(255, 211, 77, 0.14); }
+.mg-maze b {
+  position: absolute; width: calc(100% / var(--n)); height: calc(100% / var(--n));
+  left: calc(var(--x) * 100% / var(--n)); top: calc(var(--y) * 100% / var(--n));
+  display: grid; place-items: center; font-size: calc(100cqw / var(--n) * 0.62); line-height: 1;
+}
+.mg-maze .mg-me::before { content: ''; width: 58%; height: 58%; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.mg-maze .mg-me { transition: left 0.07s linear, top 0.07s linear; }
+.mg-pad { display: grid; grid-template: 'u u u' 46px 'l . r' 46px 'd d d' 46px / 56px 20px 56px; justify-content: center; gap: 4px; touch-action: none; }
+.mg-pad button { padding: 0; font-size: 20px; touch-action: none; }
+.mg-pad [data-dir="0"] { grid-area: u; justify-self: center; width: 56px; }
+.mg-pad [data-dir="3"] { grid-area: l; }
+.mg-pad [data-dir="1"] { grid-area: r; }
+.mg-pad [data-dir="2"] { grid-area: d; justify-self: center; width: 56px; }
 
 /* Machaca */
 .mg-mash { width: 180px; height: 180px; margin: 0 auto; border-radius: 50%; font-size: 30px; font-weight: 900; background: var(--rival); border-color: var(--rival); touch-action: manipulation; user-select: none; }
@@ -354,6 +387,7 @@ button.big { width: 100%; padding: 14px; font-size: 18px; }
     background: linear-gradient(180deg, rgba(18, 26, 16, 0.85), rgba(18, 26, 16, 0));
     border-bottom: none;
   }
+  #hud { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75); }
   #hud .weapon-tag { display: none; }
   .chip { font-size: 12px; padding: 2px 8px; }
   .chip.round { font-size: 13px; }

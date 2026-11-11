@@ -26,7 +26,8 @@
 import { createRng, hashString, mixSeeds } from './rng.js';
 import { MINIGAMES, pickMinigame, validateEntry, decideMinigame } from './minigames.js';
 import { DEFAULT_CONFIG } from './config.js';
-import { WORLD, LAUNCHERS, CASTLE_BOXES, GATE_SLOTS, TERRAIN, terrainY, dsin, dcos, degToRad } from './world.js';
+import { WORLD, LAUNCHERS, CASTLE_BOXES, dsin, dcos, degToRad } from './world.js';
+import { MAPS, mapOf, mapGround, groundOf, terrainY, onRaisedTerrain, carve, blockHit, crossAt } from './maps.js';
 
 // ---------- utilidades internas ----------
 
@@ -87,33 +88,45 @@ export function createMatch(config = DEFAULT_CONFIG) {
 // ---------- generación del campo ----------
 
 /**
- * Genera las compuertas de una ronda a partir de su semilla.
+ * Genera el campo de una ronda a partir de su semilla: el mapa y sus compuertas.
+ * El mapa se sortea UNA vez, en la primera ronda de la partida, y se conserva
+ * durante toda la partida (una revancha crea un estado nuevo y por eso vuelve a
+ * sortear). El suelo también se conserva: los cráteres de rondas anteriores
+ * siguen ahí (`prevField` es el campo de la ronda anterior).
  * Se eligen pares simétricos de ranuras (mismo multiplicador en ambos
  * lados) y ranuras centrales, así el campo es igual de justo para los dos.
- * Orden de consumo del RNG: pares, centrales, relleno hasta el mínimo.
+ * Orden de consumo del RNG: mapa (solo en la primera ronda), pares, centrales,
+ * relleno hasta el mínimo.
  */
-export function generateField(roundSeed, cfg) {
+export function generateField(roundSeed, cfg, prevField = null) {
   const rng = createRng(roundSeed);
+  let mapId = prevField?.map ?? null;
+  if (!mapId || !Object.hasOwn(MAPS, mapId)) {
+    const pool = cfg.maps.filter((id) => Object.hasOwn(MAPS, id));
+    mapId = pool.length ? pool[rng.int(0, pool.length - 1)] : 'hills';
+  }
+  const slots = MAPS[mapId].gates;
   const gc = cfg.gates;
   const gates = [];
   const usedPairs = new Set();
   const addPair = (i, mult) => {
     usedPairs.add(i);
-    const [a, b] = GATE_SLOTS.pairs[i];
+    const [a, b] = slots.pairs[i];
     gates.push({ id: gates.length, seg: [...a], mult });
     gates.push({ id: gates.length, seg: [...b], mult });
   };
-  GATE_SLOTS.pairs.forEach((_, i) => {
+  slots.pairs.forEach((_, i) => {
     if (rng.chancePct(gc.pairChancePct)) addPair(i, rng.weighted(gc.table).mult);
   });
-  for (const c of GATE_SLOTS.center) {
+  for (const c of slots.center) {
     if (rng.chancePct(gc.centerChancePct)) gates.push({ id: gates.length, seg: [...c], mult: rng.weighted(gc.table).mult });
   }
-  while (gates.length < gc.minGates && usedPairs.size < GATE_SLOTS.pairs.length) {
-    const i = rng.int(0, GATE_SLOTS.pairs.length - 1);
+  while (gates.length < gc.minGates && usedPairs.size < slots.pairs.length) {
+    const i = rng.int(0, slots.pairs.length - 1);
     if (!usedPairs.has(i)) addPair(i, rng.weighted(gc.table).mult);
   }
-  return { gates };
+  const ground = prevField?.ground && prevField.map === mapId ? [...prevField.ground] : [...mapGround(MAPS[mapId])];
+  return { map: mapId, ground, gates };
 }
 
 // ---------- rondas ----------
@@ -148,7 +161,7 @@ export function startRound(state, roundSeed) {
   const s = clone(state);
   s.round += 1;
   s.roundSeed = roundSeed;
-  s.field = generateField(roundSeed, s.config);
+  s.field = generateField(roundSeed, s.config, state.field ?? null);
   // La ronda empieza con un minijuego (elegido por la semilla, con su propio
   // RNG para no alterar las compuertas); playMinigame() decide quién abre.
   s.phase = 'minigame';
@@ -184,22 +197,8 @@ export function particlePos(p, t, gravity) {
   return { x: p.x0 + p.vx * tau, y: p.y0 + p.vy * tau + 0.5 * gravity * tau * tau };
 }
 
-/**
- * ¿El tramo a→b cruza el segmento de la compuerta? Devuelve la fracción
- * del tramo (0..1) donde se cruza, o null. Solo usa + - * /.
- */
-function segmentHit(ax, ay, bx, by, seg) {
-  const [cx, cy, dx, dy] = seg;
-  const rx = bx - ax, ry = by - ay;
-  const sx = dx - cx, sy = dy - cy;
-  const den = rx * sy - ry * sx;
-  if (den === 0) return null;
-  const qx = cx - ax, qy = cy - ay;
-  const t = (qx * sy - qy * sx) / den;
-  const u = (qx * ry - qy * rx) / den;
-  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  return t;
-}
+/** ¿El tramo a→b cruza el segmento de la compuerta? Fracción del tramo (0..1) o null. */
+const segmentHit = (ax, ay, bx, by, [cx, cy, dx, dy]) => crossAt(ax, ay, bx, by, cx, cy, dx, dy);
 
 /** Valida ángulo y potencia. Devuelve un mensaje de error o null. */
 export function validateAim(angle, power, cfg) {
@@ -217,7 +216,7 @@ export function validateAim(angle, power, cfg) {
  *  particles[] : { id, parent, t0, x0, y0, vx, vy, weight, t1, end, ex, ey }
  *                Cada cohete simulado vuela en parábola desde (x0,y0) en t0
  *                hasta (ex,ey) en t1. `end`: 'split' | 'castle' | 'hill' |
- *                'ground' | 'out'. `weight` = cohetes reales que representa.
+ *                'ground' | 'rock' (obstáculo del mapa) | 'out'. `weight` = cohetes reales que representa.
  *  splits[]    : { gate, t, x, y, mult, weightIn, weightOut }
  *  hits        : cohetes reales que impactaron el castillo
  *  rawDamage   : hits × daño por cohete (sin limitar a la vida restante)
@@ -227,6 +226,9 @@ export function validateAim(angle, power, cfg) {
  */
 export function resolveShot(field, shooterIndex, shooter, angle, power, cfg, opts = {}) {
   const g = cfg.physics.gravity;
+  const map = mapOf(field);
+  const ground = groundOf(field);
+  const craters = [];
   const maxParticles = opts.maxParticles ?? cfg.maxParticles;
   const weapon = weaponOf(shooter, cfg);
   // Caja de impacto del castillo rival, ampliada si el arma tiene daño de área.
@@ -334,6 +336,14 @@ export function resolveShot(field, shooterIndex, shooter, angle, power, cfg, opt
         const tApex = p.t0 - p.vy / g;
         if (tApex > ta && tApex <= tb) apexS = (tApex - ta) / (tb - ta);
       }
+      // ¿Choca antes con un obstáculo del mapa (roca, muralla, isla…)?
+      const rockS = blockHit(map, a.x, a.y, b.x, b.y);
+      if (rockS !== null && rockS < hitS && rockS < apexS) {
+        const tr = ta + (tb - ta) * rockS;
+        const at = particlePos(p, tr, g);
+        finish(p, tr, at.x, at.y, 'rock');
+        continue;
+      }
       if (apexS < hitS) {
         split(p, ta + (tb - ta) * apexS, weapon.clusterSplit, null, weapon.clusterSpreadDeg);
         continue;
@@ -346,9 +356,15 @@ export function resolveShot(field, shooterIndex, shooter, angle, power, cfg, opt
       // Colisiones al final del tramo.
       if (b.x >= box[0] && b.x <= box[2] && b.y >= box[1] && b.y <= box[3]) {
         finish(p, tb, b.x, b.y, 'castle');
-      } else if (b.y >= terrainY(b.x)) {
-        const onHill = b.x > TERRAIN[0][0] && b.x < TERRAIN[TERRAIN.length - 1][0];
-        finish(p, tb, b.x, Math.min(b.y, terrainY(b.x)), onHill ? 'hill' : 'ground');
+      } else if (b.y >= terrainY(ground, b.x)) {
+        const ty = terrainY(ground, b.x);
+        const raised = onRaisedTerrain(ground, b.x);
+        finish(p, tb, b.x, Math.min(b.y, ty), raised ? 'hill' : 'ground');
+        if (raised) {
+          // Cráter: más grande si el cohete representa a muchos (todo en enteros).
+          const bonus = p.weight >= 30 ? 8 : p.weight >= 8 ? 5 : p.weight >= 2 ? 2 : 0;
+          craters.push({ id: p.id, x: Math.floor(b.x), y: Math.floor(Math.min(b.y, ty)), r: weapon.craterR + Math.floor((weapon.craterR * bonus) / 10) });
+        }
       } else if (b.x < -100 || b.x > WORLD.width + 100) {
         finish(p, tb, b.x, b.y, 'out');
       }
@@ -381,6 +397,7 @@ export function resolveShot(field, shooterIndex, shooter, angle, power, cfg, opt
     rocketDamage,
     particles,
     splits,
+    craters,
     hits,
     rawDamage: Math.floor((hits * shooter.damagePerRocket * weapon.damagePct) / 100),
     totalRockets,
@@ -441,17 +458,22 @@ export function previewShot(state, playerIndex, angle, power, opts) {
 
 /**
  * Puntos de la trayectoria inicial (sin compuertas) para la mira.
- * Devuelve [{x, y}] cada `step` ticks hasta `ticks` o hasta tocar el suelo.
+ * Devuelve [{x, y}] cada `step` ticks hasta `ticks` o hasta tocar el suelo
+ * o un obstáculo del mapa del campo `field`.
  */
-export function aimPreview(shooterIndex, angle, power, cfg, ticks = 40, step = 3) {
+export function aimPreview(shooterIndex, angle, power, cfg, ticks = 40, step = 3, field = null) {
+  const map = mapOf(field);
+  const ground = groundOf(field);
   const v = launchVelocity(shooterIndex, angle, power, cfg);
   const L = LAUNCHERS[shooterIndex];
   const p = { t0: 0, x0: L.x, y0: L.y, vx: v.vx, vy: v.vy };
   const pts = [];
+  let prev = { x: L.x, y: L.y };
   for (let t = step; t <= ticks; t += step) {
     const pos = particlePos(p, t, cfg.physics.gravity);
-    if (pos.y >= terrainY(pos.x)) break;
+    if (pos.y >= terrainY(ground, pos.x) || blockHit(map, prev.x, prev.y, pos.x, pos.y) !== null) break;
     pts.push(pos);
+    prev = pos;
   }
   return pts;
 }
@@ -471,6 +493,10 @@ export function fire(state, playerIndex, angle, power) {
   const shooter = s.players[playerIndex];
   const target = s.players[other(playerIndex)];
   const shot = resolveShot(s.field, playerIndex, shooter, angle, power, s.config);
+  // Los cráteres de este disparo quedan en el suelo para lo que sigue.
+  let ground = groundOf(s.field);
+  for (const c of shot.craters) ground = carve(ground, c.x, c.y, c.r);
+  s.field.ground = [...ground];
 
   // El daño real no pasa de la vida que le queda al rival ni del tope por
   // disparo (un % de su vida máxima), para que nadie gane de un solo tiro.

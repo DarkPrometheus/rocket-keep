@@ -14,29 +14,17 @@
 
 import * as L from '../game/logic.js';
 import { GameClient } from '../game/client.js';
-import { needlePos } from '../game/minigames.js';
+import { needlePos, mazePathLength } from '../game/minigames.js';
 
 /**
  * Qué tan bien apunta cada dificultad: elige entre los `topN` mejores
  * tiros de una rejilla y luego "tiembla" un poco (ruido en grados y %).
  */
 const DIFFICULTY = {
-  easy: { topN: 12, angleNoise: 9, powerNoise: 12, mini: { needleMs: 90, countErr: 6, simon: [2, 6], taps: [13, 20] } },
-  normal: { topN: 8, angleNoise: 6, powerNoise: 9, mini: { needleMs: 50, countErr: 4, simon: [4, 8], taps: [17, 24] } },
-  hard: { topN: 2, angleNoise: 1.5, powerNoise: 2, mini: { needleMs: 22, countErr: 2, simon: [6, 10], taps: [21, 28] } },
+  easy: { topN: 12, angleNoise: 9, powerNoise: 12, mini: { needleMs: 90, countErr: 6, simon: [2, 6], taps: [13, 20], mazeStepMs: [300, 460] } },
+  normal: { topN: 8, angleNoise: 6, powerNoise: 9, mini: { needleMs: 50, countErr: 4, simon: [4, 8], taps: [17, 24], mazeStepMs: [210, 320] } },
+  hard: { topN: 2, angleNoise: 1.5, powerNoise: 2, mini: { needleMs: 22, countErr: 2, simon: [6, 10], taps: [21, 28], mazeStepMs: [140, 210] } },
 };
-
-/** Cuánto tarda (ms, aprox.) un humano en jugar un minijuego con ese resultado. */
-function minigameDuration(mg, entry) {
-  const p = mg.params;
-  switch (mg.id) {
-    case 'needle': return entry.ms;
-    case 'count': return p.showMs + entry.ms;
-    case 'simon': return entry.ms;
-    case 'mash': return 2100 + p.durationMs;
-    default: return 1500 + Math.random() * 2500;
-  }
-}
 
 /** Entero al azar en [a, b] (el bot no necesita determinismo). */
 const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -97,10 +85,10 @@ export class BotPlayer {
     let delay = this.#thinkMs * (0.7 + Math.random() * 0.6);
     let entry = null;
     if (key.startsWith('mini')) {
-      // Decide ya su resultado y tarda lo que tardaría en conseguirlo (si piensa).
+      // Decide ya su resultado (el tiempo que cuenta va DENTRO de la entrada, así que
+      // su nivel no cambia) y lo entrega enseguida, para no hacer esperar al jugador.
       entry = this.chooseMinigameEntry(s, c.me);
-      // (+ lo que tarda un humano en leer la intro y pulsar "¡Listo!")
-      if (this.#thinkMs > 0) delay += 1800 + minigameDuration(s.minigame, entry);
+      delay = this.#thinkMs > 0 ? 300 + Math.random() * 500 : 0;
     }
     this.#timer = setTimeout(() => {
       // Al despertar, comprueba que la situación sigue igual.
@@ -167,6 +155,12 @@ export class BotPlayer {
       }
       case 'mash':
         return { taps: Math.min(p.maxTaps, rand(d.taps[0], d.taps[1])) };
+      case 'maze': {
+        // Recorre el camino más corto (más unos pasos de duda) a su ritmo.
+        const steps = mazePathLength(p) + rand(2, 8);
+        const ms = steps * rand(d.mazeStepMs[0], d.mazeStepMs[1]) + rand(800, 2500);
+        return ms >= p.timeMs ? { ms: p.timeMs, done: 0 } : { ms, done: 1 };
+      }
       case 'rps':
         return { picks: Array.from({ length: p.picks }, () => rand(0, 2)) };
       default:

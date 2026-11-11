@@ -7,7 +7,9 @@
 //
 // Handlers (setHandlers):
 //   onStartBot(difficulty)  onCreateRoom()  onJoinRoom(code)
-//   onPickWeapon(id)  onFire()  onBuy(id)  onReady()  onRematch()  onLeave()
+//   onPickWeapon(id)  onChargeStart()  onChargeEnd()  onChargeCancel()  onBuy(id)
+//   onReady()  onRematch()  onLeave()
+// (Mantener el clic —en el campo o en Disparar— carga la barra y soltar dispara; setCharge() dibuja la barra.)
 //   onLobbyCancel()  onShare()  onCopyLink()
 // En línea: showLobby(view) / hideLobby() y setNetStatus(texto | null).
 // =============================================================
@@ -188,6 +190,13 @@ export class GameUI {
     this.#el.lobby.innerHTML = '';
   }
 
+  /** Barra de carga del botón Disparar (0 = vacía, 1 = llena) y su texto: 'idle' o 'hold' (cargando). */
+  setCharge(level, mode = 'idle') {
+    const fire = this.#el.fire;
+    fire.style.setProperty('--charge', String(level));
+    fire.textContent = mode === 'hold' ? '¡Suelta para disparar!' : 'Disparar';
+  }
+
   /** Aviso fijo de conexión durante la partida (null lo oculta). */
   setNetStatus(text) {
     this.#el.netStatus.hidden = !text;
@@ -226,7 +235,21 @@ export class GameUI {
       const link = e.target.closest('input.link');
       if (link) link.select();
     });
-    this.#el.fire.addEventListener('click', () => this.#h.onFire?.());
+    // Disparar: mantener pulsado carga la barra de potencia; al soltar dispara.
+    const fire = this.#el.fire;
+    fire.addEventListener('pointerdown', (e) => {
+      if (fire.disabled) return;
+      e.preventDefault();
+      try {
+        fire.setPointerCapture?.(e.pointerId); // el soltar llega aunque el dedo se salga del botón
+      } catch {
+        /* sin captura: el soltar solo llega si el dedo sigue sobre el botón */
+      }
+      this.#h.onChargeStart?.();
+    });
+    fire.addEventListener('pointerup', () => this.#h.onChargeEnd?.());
+    fire.addEventListener('pointercancel', () => this.#h.onChargeCancel?.());
+    fire.addEventListener('contextmenu', (e) => e.preventDefault()); // pulsación larga en el celular
     this.#el.leave.addEventListener('click', () => {
       if (confirm('¿Abandonar la partida y volver al menú?')) this.#h.onLeave?.();
     });
@@ -291,7 +314,7 @@ export class GameUI {
       el.banner.className = `banner ${v.turn}`;
     }
     el.fire.disabled = !v.canFire;
-    if (v.canFire) el.hint.textContent = 'Arrastra desde tu castillo: dirección = ángulo, distancia = potencia. Suelta para disparar.';
+    if (v.canFire) el.hint.textContent = 'Mueve o arrastra para apuntar. Mantén el clic para cargar la barra (más carga, más lejos) y suelta para disparar.';
     else el.hint.textContent = v.turn === 'opp' ? 'El rival está apuntando…' : '';
 
     this.#renderLoadout(v.loadout);

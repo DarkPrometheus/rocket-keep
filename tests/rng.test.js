@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mulberry32, createRng, mixSeeds, hashString } from '../game/rng.js';
-import { dsin, dcos, degToRad, terrainY, TERRAIN, WORLD } from '../game/world.js';
+import { dsin, dcos, degToRad, WORLD } from '../game/world.js';
+import { MAPS, mapGround, terrainY } from '../game/maps.js';
 
 test('mulberry32 da siempre la misma secuencia para una semilla', () => {
   const n = mulberry32(12345);
@@ -52,10 +53,21 @@ test('dsin/dcos se parecen a Math.sin/cos (error < 1e-9)', () => {
   }
 });
 
-test('el terreno es simétrico y coincide con la polilínea', () => {
-  // Los extremos de la polilínea coinciden con el suelo; los interiores, con su punto.
-  for (const [x, y] of TERRAIN.slice(1, -1)) assert.equal(terrainY(x), y);
-  for (let x = 0; x <= WORLD.width; x += 7) {
-    assert.equal(terrainY(x), terrainY(WORLD.width - x), `x=${x}`);
+test('el terreno de cada mapa es simétrico y coincide con su polilínea', () => {
+  for (const map of Object.values(MAPS)) {
+    // Los extremos de la polilínea coinciden con el suelo; los interiores, con su punto.
+    for (const [x, y] of map.terrain.slice(1, -1)) assert.equal(terrainY(mapGround(map), x), y, `${map.id} x=${x}`);
+    for (let x = 0; x <= WORLD.width; x += 7) {
+      assert.equal(terrainY(mapGround(map), x), terrainY(mapGround(map), WORLD.width - x), `${map.id} x=${x}`);
+    }
+  }
+});
+
+test('los obstáculos de cada mapa son simétricos', () => {
+  for (const map of Object.values(MAPS)) {
+    const key = (b) => JSON.stringify(b.pts.map(([x, y]) => [x, y]).sort((a, c) => a[0] - c[0] || a[1] - c[1]));
+    const mirrored = (b) => JSON.stringify(b.pts.map(([x, y]) => [WORLD.width - x, y]).sort((a, c) => a[0] - c[0] || a[1] - c[1]));
+    const all = new Set(map.blocks.map(key));
+    for (const b of map.blocks) assert.ok(all.has(mirrored(b)), `${map.id}: bloque sin su reflejo`);
   }
 });
